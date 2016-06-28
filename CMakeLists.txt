@@ -5,9 +5,9 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 
 # We need to know where OpenMM is installed so we can access the headers and libraries.
-SET(OPENMM_DIR "$ENV{OPENMM_DIR}" CACHE PATH "Where OpenMM is installed")
-INCLUDE_DIRECTORIES("$ENV{OPENMM_DIR}/include")
-LINK_DIRECTORIES("$ENV{OPENMM_DIR}/lib" "$ENV{OPENMM_DIR}/lib/plugins")
+SET(OPENMM_DIR "/usr/local/openmm" CACHE PATH "Where OpenMM is installed")
+INCLUDE_DIRECTORIES("${OPENMM_DIR}/include")
+LINK_DIRECTORIES("${OPENMM_DIR}/lib" "${OPENMM_DIR}/lib/plugins")
 
 # set flags for linking on mac
 IF(APPLE)
@@ -63,6 +63,12 @@ SET_TARGET_PROPERTIES(${SHARED_MELD_TARGET} PROPERTIES
     LINK_FLAGS "${EXTRA_COMPILE_FLAGS}")
 TARGET_LINK_LIBRARIES(${SHARED_MELD_TARGET} OpenMM)
 INSTALL_TARGETS(/lib RUNTIME_DIRECTORY /lib ${SHARED_MELD_TARGET})
+
+# install headers
+FILE(GLOB API_ONLY_INCLUDE_FILES "openmmapi/include/*.h")
+INSTALL (FILES ${API_ONLY_INCLUDE_FILES} DESTINATION include)
+FILE(GLOB API_ONLY_INCLUDE_FILES_INTERNAL "openmmapi/include/internal/*.h")
+INSTALL (FILES ${API_ONLY_INCLUDE_FILES_INTERNAL} DESTINATION include/internal)
 
 # Enable testing
 ENABLE_TESTING()
