@@ -5,7 +5,8 @@
 
 %module meldplugin
 
-%import(module="simtk.openmm") "OpenMMSwigHeaders.i"
+%import(module="simtk.openmm") "swig/OpenMMSwigHeaders.i"
+%include "swig/typemaps.i"
 
 
 %include "std_vector.i"
@@ -22,11 +23,12 @@ namespace std {
 #include "OpenMM.h"
 #include "OpenMMAmoeba.h"
 #include "OpenMMDrude.h"
+#include "openmm/RPMDIntegrator.h"
+#include "openmm/RPMDMonteCarloBarostat.h"
 #include <vector>
 %}
 
 
-/* python code for routines to strip units */
 %pythoncode %{
 import simtk.unit as unit
 import simtk.openmm as mm
@@ -34,15 +36,7 @@ import simtk.openmm as mm
 
 /* include version information */
 %pythoncode %{
-__version__ = '0.1.0'
-%}
-
-/* strip the units off of all input arguments */
-%pythonprepend %{
-try:
-    args=mm.stripUnits(args)
-except UnboundLocalError:
-    pass
+__version__ = '0.1.3'
 %}
 
 /*
