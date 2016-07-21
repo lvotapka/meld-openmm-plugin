@@ -90,6 +90,51 @@ int MeldForce::getNumResidues() const {
     return alpha_carbons.size();
 }
 
+int MeldForce::setEcoOutputFreq(int eco_output_freq_value) {
+    eco_output_freq = eco_output_freq_value;
+    return 0;
+}
+
+int MeldForce::getEcoOutputFreq() const {
+    return eco_output_freq;
+}
+
+int MeldForce::setPrintAvgEco(bool print_avg_eco_value) {
+    print_avg_eco = print_avg_eco_value;
+    return 0;
+}
+
+int MeldForce::getPrintAvgEco() const {
+    return print_avg_eco;
+}
+
+int MeldForce::setPrintEcoValueArray(bool print_eco_value_array_value) {
+    print_eco_value_array = print_eco_value_array_value;
+    return 0;
+}
+
+int MeldForce::getPrintEcoValueArray() const {
+    return print_eco_value_array;
+}
+
+int MeldForce::setCurrentReplicaIndex(int current_replica_index_value) {
+    current_replica_index = current_replica_index_value;
+    return 0;
+}
+
+int MeldForce::getCurrentReplicaIndex() const {
+    return current_replica_index;
+}
+
+int MeldForce::setStartingReplicaIndex(int starting_replica_index_value) {
+    starting_replica_index = starting_replica_index_value;
+    return 0;
+}
+
+int MeldForce::getStartingReplicaIndex() const {
+    return starting_replica_index;
+}
+
 int MeldForce::setAlphaCarbonVector(std::vector< int > alpha_carbon_vector) {
     //alpha_carbons.reserve(alpha_carbon_vector.size()); // set the size of the global alpha carbon vector
     //copy(alpha_carbon_vector.begin(), alpha_carbon_vector.end(), );
@@ -112,6 +157,7 @@ std::vector<int> MeldForce::getDistRestSorted() const {
 
 int MeldForce::addDistanceRestraint(int particle1, int particle2, float r1, float r2,
                                     float r3, float r4, float force_constant, bool doing_eco, float eco_factor, float eco_constant, float eco_linear, int res_index1, int res_index2) {
+    
     /*
     cout << "doing_eco:" << doing_eco ;
     cout << " eco_factor:" << eco_factor;

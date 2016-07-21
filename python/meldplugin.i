@@ -95,6 +95,16 @@ namespace MeldPlugin {
         
         int setEcoCutoff(float eco_cut_value);
         
+        int setEcoOutputFreq(int eco_output_freq_value);
+        
+        int setPrintAvgEco(bool print_avg_eco_value);
+        
+        int setPrintEcoValueArray(bool print_eco_value_array_value);
+        
+        int setCurrentReplicaIndex(int current_replica_index_value);
+        
+        int setStartingReplicaIndex(int starting_replica_index_value);
+        
         int setAlphaCarbonVector(std::vector< int > alpha_carbon_vector);
         
         int setDistRestSortedVector(std::vector< int > dist_rest_sorted_vector);

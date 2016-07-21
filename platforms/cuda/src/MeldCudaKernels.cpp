@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <fstream>
 #include <stdexcept>
 #include <numeric>
 #include <vector>
@@ -47,7 +48,7 @@ CudaCalcMeldForceKernel::CudaCalcMeldForceKernel(std::string name, const Platfor
         cout << "***" << endl;
         throw OpenMMException("MeldForce does not support double precision");
     }
-
+        
     numDistRestraints = 0;
     numHyperbolicDistRestraints = 0;
     numTorsionRestraints = 0;
@@ -61,6 +62,13 @@ CudaCalcMeldForceKernel::CudaCalcMeldForceKernel(std::string name, const Platfor
     largestCollection = 0;
     groupsPerBlock = -1;
     MAX_ECO_DEPTH = 7;
+    eco_output_freq = 1000;
+    eco_value_all_dist_rests = 0;
+    on_step = 0;
+    print_avg_eco = false;
+    print_eco_value_array = false;
+    current_replica_index = 0;
+    starting_replica_index = 0;
 
     distanceRestRParams = NULL;
     distanceRestKParams = NULL;
@@ -211,6 +219,12 @@ void CudaCalcMeldForceKernel::allocateMemory(const MeldForce& force) {
     numCollections = force.getNumCollections();
     ecoCutoff = force.getEcoCutoff();
     numResidues = force.getNumResidues();
+    eco_output_freq = force.getEcoOutputFreq();
+    print_avg_eco = force.getPrintAvgEco();
+    print_eco_value_array = force.getPrintEcoValueArray();
+    current_replica_index = force.getCurrentReplicaIndex();
+    starting_replica_index = force.getStartingReplicaIndex();
+    
     INF = 9999;
     timevar = 0;
     timecount = 0;
@@ -1206,6 +1220,32 @@ double CudaCalcMeldForceKernel::execute(ContextImpl& context, bool includeForces
             &distanceRestForces->getDevicePointer(),
             &numDistRestraints}; // this is getting the reference pointer for each of these arrays
         cu.executeKernel(computeDistRestKernel, distanceArgs, numDistRestraints);
+        
+        
+    }
+    
+    if (on_step % eco_output_freq == (eco_output_freq-1)) { // then we need to output ECO information
+      fout.open("eco.log", ios::app); // open ECO file for appending
+      assert(!fout.fail());
+      fout << "ECO: current replica id: " << current_replica_index << " starting replica id: " << starting_replica_index << " on step: " << on_step << " eco_output_freq: " << eco_output_freq << "\n";
+      if (print_avg_eco) {
+        distanceRestEcoValues->download(h_distanceRestEcoValues);
+        eco_value_all_dist_rests = 0;
+        for (counter = 0; counter < numDistRestraints; counter++) {
+          eco_value_all_dist_rests += (int) h_distanceRestEcoValues[counter]; // sum up all of the ECO values
+        }
+        fout << "ECO:   average ECO in this step: " << eco_value_all_dist_rests / numDistRestraints << "\n";
+      }
+      if (print_eco_value_array) {
+        distanceRestEcoValues->download(h_distanceRestEcoValues);
+        fout << "ECO:   values: ";
+        for (counter = 0; counter < numDistRestraints; counter++) {
+          fout << h_distanceRestAtomIndices[counter].x << "-" << h_distanceRestAtomIndices[counter].y << ":" << h_distanceRestEcoValues[counter] << " ";
+        }
+        fout << "\n";
+      }
+      fout.close(); // close file
+      assert(!fout.fail()); 
     }
     
     /*
@@ -1397,7 +1437,7 @@ double CudaCalcMeldForceKernel::execute(ContextImpl& context, bool includeForces
         };
         cu.executeKernel(applyTorsProfileRestKernel, applyTorsProfileRestArgs, numTorsProfileRestraints);
     }
-    
+    on_step++;
     return 0.0;
 }
 

@@ -631,7 +631,6 @@ extern "C" __global__ void computeDistProfileRest(
     }
 }
 
-
 extern "C" __global__ void computeTorsProfileRest(
                             const real4* __restrict__ posq,             // positions and charges
                             const int4* __restrict__ atomIndices0,      // i,j,k,l for torsion 0

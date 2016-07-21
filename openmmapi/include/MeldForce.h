@@ -54,6 +54,27 @@ public:
      */
     float getEcoCutoff() const;
     
+    int setEcoOutputFreq(int eco_output_freq_value);
+    
+    int getEcoOutputFreq() const;
+        
+    int setPrintAvgEco(bool print_avg_eco_value);
+    
+    int getPrintAvgEco() const;
+        
+    int setPrintEcoValueArray(bool print_eco_value_array_value);
+    
+    int getPrintEcoValueArray() const;
+        
+    int setCurrentReplicaIndex(int current_replica_index_value);
+    
+    int getCurrentReplicaIndex() const;
+        
+    int setStartingReplicaIndex(int starting_replica_index_value);
+    
+    int getStartingReplicaIndex() const;
+
+
     /*
      * @return The number of residues. 
      */
@@ -486,6 +507,12 @@ private:
     class CollectionInfo;
     int n_restraints;
     float eco_cut;
+    int eco_output_freq;
+    bool print_avg_eco;
+    bool print_eco_value_array;
+    int current_replica_index;
+    int starting_replica_index;
+    
     std::vector< int > alpha_carbons;
     std::vector< int > dist_rest_sorted;
     std::vector<DistanceRestraintInfo> distanceRestraints;

@@ -9,6 +9,8 @@
 #include "meldKernels.h"
 #include "openmm/kernels.h"
 #include "openmm/System.h"
+#include <iostream>
+#include <fstream>
 #include "openmm/cuda/CudaContext.h"
 #include "openmm/cuda/CudaArray.h"
 #include "openmm/cuda/CudaSort.h"
@@ -66,6 +68,16 @@ private:
     int INF;
     int MAX_THREADS;
     int MAX_ECO_DEPTH;
+    int eco_output_freq; // the frequency at which to output
+    int eco_value_all_dist_rests; // the total eco value of all steps so far
+    int on_step; // how many steps have elapsed so far when we've updated the eco totals
+    bool print_avg_eco;
+    bool print_eco_value_array;
+    int current_replica_index;
+    int starting_replica_index;   
+    std::ofstream fout; 
+
+    
     long int timevar; // a convenient variable to keep track of time
     long int timecount; 
     int largestGroup;
@@ -142,6 +154,8 @@ private:
 
     OpenMM::CudaArray* alphaCarbons; // Indices of alpha carbons
     std::vector<int> h_alphaCarbons;
+    
+    //std::vector<int> eco_output_freq; // the frequency at which to output ECO info
     
     OpenMM::CudaArray* alphaCarbonPosq;
     std::vector<float> h_alphaCarbonPosq; // atomic positions of alpha carbons
