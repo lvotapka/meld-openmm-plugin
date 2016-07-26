@@ -123,9 +123,20 @@ public:
      * @return The number of torsion profile restraint parameters.
      */
     int getNumTorsProfileRestParams() const;
+    
+    /**
+     * @return The number of Cartesian profile restraints.
+     */
+    int getNumCartProfileRestraints() const;
 
     /**
-     * @return The total number of distance and torsion restraints.
+     * @return The number of Cartesian profile restraint parameters.
+     */
+    int getNumCartProfileRestParams() const;
+
+
+    /**
+     * @return The total number of distance, Cartesian, and torsion restraints.
      */
     int getNumTotalRestraints() const;
 
@@ -242,6 +253,28 @@ public:
      * @param indices  the indices of the restraints in the group
      * @param numActive  the number of active restraints in the group
      */
+     
+     void getCartProfileRestraintParams(int index, int& atom, int startingCoeff,
+            int dimx, int dimy, int dimz, float resx, float resy, float resz, 
+            float origx, float origy, float origz,
+            float& scaleFactor, int& globalIndex) const;
+
+    /**
+     * Get the parameters for a group of restraints.
+     *
+     * @param index  the index of the group
+     
+     */
+     
+     void getCartProfileRestraintCoeffs(int index, float& coeff) const;
+     /**
+     * Get the coefficients for a Cartesian restraint
+     *
+     * @param index  the index of the coefficient to retrieve
+     * @param coeff  the value of the coefficient at index returned by reference
+     */
+     
+     
     void getGroupParams(int index, std::vector<int>& indices, int& numActive) const;
 
     /**
@@ -483,6 +516,39 @@ public:
      * @param n_active  the number of active restraints in the group
      * @return the index of the group that was created
      */
+     
+     int addCartProfileRestraint(int& atom, int startingCoeff,
+            int dimx, int dimy, int dimz, float resx, float resy, float resz, 
+            float origx, float origy, float origz,float scaleFactor);
+
+    /**
+     * Add a new cartesian profile restraint.
+     *
+     
+     * @param atom   the atom applied to this restraint
+     * @param startingCoeff: a pointer to the first coefficient applied to this atom
+     * @param dimx/y/z: the dimensions of a grid that define the profile
+     * @param resx/y/z: the resolution of the grid in nm
+     * @param origx/y/z: the origin of the grid in nm
+     * @param scaleFactor  the scale factor
+     */
+    void modifyCartProfileRestraint(int index, int& atom, int startingCoeff,
+            int dimx, int dimy, int dimz, float resx, float resy, float resz, 
+            float origx, float origy, float origz,float scaleFactor);
+
+    /**
+     * Modify a cartesian profile restraint.
+     *
+     * @param index  the index of the restraint to modify
+     * @param atom   the atom applied to this restraint
+     * @param startingCoeff: a pointer to the first coefficient applied to this atom
+     * @param dimx/y/z: the dimensions of a grid that define the profile
+     * @param resx/y/z: the resolution of the grid in nm
+     * @param origx/y/z: the origin of the grid in nm
+     * @param scaleFactor  the scale factor
+     */
+     
+     
     int addGroup(std::vector<int> restraint_indices, int n_active);
 
     /**
@@ -503,6 +569,7 @@ private:
     class HyperbolicDistanceRestraintInfo;
     class DistProfileRestraintInfo;
     class TorsProfileRestraintInfo;
+    class CartProfileRestraintInfo;
     class GroupInfo;
     class CollectionInfo;
     int n_restraints;
@@ -520,6 +587,7 @@ private:
     std::vector<TorsionRestraintInfo> torsions;
     std::vector<DistProfileRestraintInfo> distProfileRestraints;
     std::vector<TorsProfileRestraintInfo> torsProfileRestraints;
+    std::vector<CartProfileRestraintInfo> cartProfileRestraints;
     std::vector<GroupInfo> groups;
     std::vector<CollectionInfo> collections;
 
@@ -642,6 +710,28 @@ private:
             a0(a0), a1(a1), a2(a2), a3(a3), a4(a4), a5(a5), a6(a6), a7(a7),
             a8(a8), a9(a9), a10(a10), a11(a11), a12(a12), a13(a13), a14(a14), a15(a15),
             scaleFactor(scaleFactor), globalIndex(globalIndex) {
+            }
+    };
+    
+    class CartProfileRestraintInfo {
+    public:
+        int atom, startingCoeff, dimx, dimy, dimz, globalIndex;
+        float resx, resy, resz, origx, origy, origz, scaleFactor;
+        std::vector<double> a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15;
+
+        CartProfileRestraintInfo() {
+            atom = startingCoeff, dimx, dimy, dimz, globalIndex = -1;
+            resx = resy = resz = origx = origy = origz = 0;
+            scaleFactor = 0;
+        }
+
+        CartProfileRestraintInfo(int atom, int startingCoeff, int dimx, int dimy,
+                int dimz, float resx, float resy, float resz, float origx,
+                float origy, float origz, float scaleFactor, int globalIndex) :
+            atom(atom), startingCoeff(startingCoeff), dimx(dimx), dimy(dimy),
+            dimz(dimz), resx(resx), resy(resy), resz(resz), origx(origx),
+            origy(origy), origz(origz), scaleFactor(scaleFactor), 
+            globalIndex(globalIndex) {
             }
     };
 

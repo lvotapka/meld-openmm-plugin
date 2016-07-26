@@ -734,6 +734,23 @@ extern "C" __global__ void computeTorsProfileRest(
     }
 }
 
+extern "C" __global__ void computeCartProfileRest(
+                            const real4* __restrict__ posq,             // positions and charges
+                            const int* __restrict__ atomIndex,         // i for Cartesian rest.
+                            const float* __restrict__ coeffs,          // all the coefficients for all Cartesian restraints
+                            const int* __restrict__ startingCoeff,     // the index of the first coefficient for this restraint
+                            const int3* __restrict__ dim,              // dimensions of the grid
+                            const float3* __restrict__ res,              // resolution of the grid
+                            const float3* __restrict__ orig,              // origin of the grid
+                            const float* __restrict__ scaleFactor,      // scale factor for energies and forces
+                            const int* __restrict__ indexToGlobal,      // index of this restraint in the global array
+                            float* __restrict__ restraintEnergies,      // global energy of each restraint
+                            float3* __restrict__ forceBuffer,        // cache the forces for application later
+                            const int numRestraints ) {
+                            
+                            forceBuffer[index] = 0.0; forceBuffer[index+1] = 0.0; forceBuffer[index+2] = 0.0; 
+                            restraintEnergies[globalIndex] = 0.0; // keep it at zero until Daniel gives the code to me
+}
 
 extern "C" __global__ void evaluateAndActivate(
         const int numGroups,

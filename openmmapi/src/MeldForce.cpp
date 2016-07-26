@@ -60,10 +60,23 @@ int MeldForce::getNumTorsProfileRestParams() const {
     return total;
 }
 
+int MeldForce::getNumCartProfileRestraints() const {
+    return cartProfileRestraints.size();
+}
+
+int MeldForce::getNumCartProfileRestParams() const {
+    int total = 0;
+    for(std::vector<CartProfileRestraintInfo>::const_iterator iter=cartProfileRestraints.begin();
+            iter != cartProfileRestraints.end(); ++iter) {
+        total += iter->nBins * iter->nBins;
+    }
+    return total;
+}
+
 
 int MeldForce::getNumTotalRestraints() const {
     return distanceRestraints.size() + hyperbolicDistanceRestraints.size() + torsions.size() +
-        distProfileRestraints.size() + torsProfileRestraints.size();
+        distProfileRestraints.size() + torsProfileRestraints.size() + cartProfileRestraints.size();
 }
 
 

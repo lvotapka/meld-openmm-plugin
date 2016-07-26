@@ -60,6 +60,8 @@ private:
     int numDistProfileRestParams;
     int numTorsProfileRestraints;
     int numTorsProfileRestParams;
+    int numCartProfileRestraints;
+    int numCartProfileRestCoeffs;
     int numRestraints;
     int numGroups;
     int numCollections;
@@ -90,6 +92,7 @@ private:
     CUfunction computeTorsionRestKernel;
     CUfunction computeDistProfileRestKernel;
     CUfunction computeTorsProfileRestKernel;
+    CUfunction computeCartProfileRestKernel;
     CUfunction evaluateAndActivateKernel;
     CUfunction evaluateAndActivateCollectionsKernel;
     CUfunction applyGroupsKernel;
@@ -274,7 +277,36 @@ private:
     std::vector<int> h_torsProfileRestGlobalIndices;
 
     OpenMM::CudaArray* torsProfileRestForces;       // float3 * 8 to hold the forces on i, j, k, l, for this restraint
-
+    
+    OpenMM::CudaArray* cartProfileRestAtomIndices;  // int to hold atom indices
+    std::vector<int> h_cartProfileRestAtomIndices;
+    
+    OpenMM::CudaArray* cartProfileRestCoeffs;       // float * 64 to hold all the coefficients for a tricubic interpolation
+    std::vector<float> h_cartProfileRestCoeffs;    
+    
+    //OpenMM::CudaArray* cartProfileRestNumCoeffs;    // int the total number of coeffs for all restraints
+    //std::vector<int> h_cartProfileRestNumCoeffs;
+    
+    OpenMM::CudaArray* cartProfileRestStartingCoeff;// int the index at which this restraint starts reading its coefficients, as several restraints might have the same coeffs
+    std::vector<int> h_cartProfileRestStartingCoeff;
+    
+    OpenMM::CudaArray* cartProfileRestDims;         // float3 to hold the dimensions of the grid
+    std::vector<float3> h_cartProfileRestDims;
+    
+    OpenMM::CudaArray* cartProfileRestRes;          // float3 to hold the resolution of the grid
+    std::vector<float3> h_cartProfileRestRes;
+    
+    OpenMM::CudaArray* cartProfileRestOrigin;       // float3 to hold the origin of the grid
+    std::vector<float3> h_cartProfileRestOrigin; 
+    
+    OpenMM::CudaArray* cartProfileRestScaleFactor;  // float to hold the scale factor of the energies and forces
+    std::vector<float> h_cartProfileRestScaleFactor;
+    
+    OpenMM::CudaArray* cartProfileRestGlobalIndices;// int to hold the global indices for each restraint
+    std::vector<int> h_cartProfileRestGlobalIndices;
+    
+    OpenMM::CudaArray* cartProfileRestForces;       // float3 to hold the forces on the atom due to this restraint
+    
     /**
      * Arrays for all restraints
      *
@@ -331,6 +363,7 @@ private:
     void setupTorsionRestraints(const MeldForce& force);
     void setupDistProfileRestraints(const MeldForce& force);
     void setupTorsProfileRestraints(const MeldForce& force);
+    void setupCartesianProfileRestraints(const MeldForce& force);
     void setupGroups(const MeldForce& force);
     void setupCollections(const MeldForce& force);
     void validateAndUpload();
