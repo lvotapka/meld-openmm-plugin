@@ -59,6 +59,7 @@ CudaCalcMeldForceKernel::CudaCalcMeldForceKernel(std::string name, const Platfor
     numCollections = 0;
     ecoCutoff = 0;
     numResidues = 0;
+    numCartProfileRestCoeffs = 0;
     largestGroup = 0;
     largestCollection = 0;
     groupsPerBlock = -1;
@@ -82,6 +83,7 @@ CudaCalcMeldForceKernel::CudaCalcMeldForceKernel(std::string name, const Platfor
     distanceRestContacts = NULL;
     distanceRestEdgeCounts = NULL;
     alphaCarbons = NULL;
+    globalCartProfileRestCoeffs = NULL;
     dijkstra_unexplored = NULL;
     dijkstra_unexplored_old = NULL;
     dijkstra_frontier = NULL;
@@ -162,6 +164,7 @@ CudaCalcMeldForceKernel::~CudaCalcMeldForceKernel() {
     delete distanceRestContacts;
     delete distanceRestEdgeCounts;
     delete alphaCarbons;
+    delete globalCartProfileRestCoeffs;
     delete dijkstra_unexplored;
     delete dijkstra_unexplored_old;
     delete dijkstra_frontier;
@@ -237,13 +240,14 @@ void CudaCalcMeldForceKernel::allocateMemory(const MeldForce& force) {
     numTorsProfileRestraints = force.getNumTorsProfileRestraints();
     numTorsProfileRestParams = force.getNumTorsProfileRestParams();
     numCartProfileRestraints = force.getNumCartProfileRestraints();
-    numCartProfileRestCoeffs = force.getNumCartProfileRestCoeffs();    
+    numCartProfileRestParams = force.getNumCartProfileRestParams();    
     
     numRestraints = force.getNumTotalRestraints();
     numGroups = force.getNumGroups();
     numCollections = force.getNumCollections();
     ecoCutoff = force.getEcoCutoff();
     numResidues = force.getNumResidues();
+    numCartProfileRestCoeffs = force.getNumCartProfileRestCoeffs();
     eco_output_freq = force.getEcoOutputFreq();
     print_avg_eco = force.getPrintAvgEco();
     print_eco_value_array = force.getPrintEcoValueArray();
@@ -255,7 +259,11 @@ void CudaCalcMeldForceKernel::allocateMemory(const MeldForce& force) {
     timecount = 0;
     
     MAX_THREADS = cu.ThreadBlockSize * cu.getNumThreadBlocks();
-
+    
+    if (numResidues == 0) {
+      cout << "Warning: numResidues:" << numResidues << ". Make sure you defined alpha carbons in setup.py\n";
+    }
+    
     // setup device memory
     if (numDistRestraints > 0) {
         distanceRestRParams        = CudaArray::create<float4> ( cu, numDistRestraints, "distanceRestRParams");
@@ -275,6 +283,7 @@ void CudaCalcMeldForceKernel::allocateMemory(const MeldForce& force) {
         
         
 	alphaCarbons		                 = CudaArray::create<int>    ( cu, numResidues, "alphaCarbons");
+	globalCartProfileRestCoeffs      = CudaArray::create<float>  ( cu, numCartProfileRestCoeffs, "globalCartProfileRestCoeffs");
 	dijkstra_unexplored              = CudaArray::create<bool>   ( cu, numResidues, "dijkstra_unexplored");
   dijkstra_unexplored_old          = CudaArray::create<bool>   ( cu, numResidues, "dijkstra_unexplored_old");
   dijkstra_frontier                = CudaArray::create<bool>   ( cu, numResidues, "dijkstra_frontier");
@@ -327,7 +336,7 @@ void CudaCalcMeldForceKernel::allocateMemory(const MeldForce& force) {
     
     if (numCartProfileRestraints > 0) {
         cartProfileRestAtomIndices   = CudaArray::create<int>    (cu, numCartProfileRestraints, "cartProfileRestAtomIndices");
-        cartProfileRestCoeffs        = CudaArray::create<float>  (cu, numCartProfileRestCoeffs, "cartProfileRestCoeffs");
+        cartProfileRestCoeffs        = CudaArray::create<float>  (cu, numCartProfileRestParams, "cartProfileRestCoeffs");
         cartProfileRestStartingCoeff = CudaArray::create<int>    (cu, numCartProfileRestraints, "cartProfileRestStartingCoeff");
         cartProfileRestDims          = CudaArray::create<float3> (cu, numCartProfileRestraints, "cartProfileRestDims");
         cartProfileRestRes           = CudaArray::create<float3> (cu, numCartProfileRestraints, "cartProfileRestRes");
@@ -361,16 +370,17 @@ void CudaCalcMeldForceKernel::allocateMemory(const MeldForce& force) {
     h_distanceRestEcoLinears              = std::vector<float>  (numDistRestraints, 0);
     //h_distanceRestCOValues                = std::vector<float>  (numDistRestraints, 0);
     h_alphaCarbons                        = std::vector<int>    (numResidues, 0);
+    h_globalCartProfileRestCoeffs         = std::vector<float>  (numCartProfileRestCoeffs, 0);
     h_distRestSorted                      = std::vector<int>    (numDistRestraints * 3, 0);
-h_restraintEnergies                       = std::vector<float>    (numRestraints, 0.0);
-h_restraintNonEcoEnergies                       = std::vector<float>    (numRestraints, 0);
+h_restraintEnergies                       = std::vector<float>  (numRestraints, 0.0);
+h_restraintNonEcoEnergies                 = std::vector<float>  (numRestraints, 0);
 h_distanceRestContacts                    = std::vector<int>    (numResidues*numResidues, 0);
 h_distanceRestEdgeCounts                  = std::vector<int>    (numResidues, 0);
 h_dijkstra_total                          = std::vector<int>    (1, 0);
 h_dijkstra_distance                       = std::vector<int>    (numResidues, 0);
 h_dijkstra_distance2                      = std::vector<int>    (numResidues, 0);
 h_distanceRestEcoValues                   = std::vector<float>  (numDistRestraints, 0);
-h_distanceRestForces                      = std::vector<float3>  (numDistRestraints, make_float3(0.0, 0.0, 0.0));
+h_distanceRestForces                      = std::vector<float3> (numDistRestraints, make_float3(0.0, 0.0, 0.0));
 h_alphaCarbonPosq                         = std::vector<float>  (numResidues*3, 0);
 h_dijkstra_unexplored                     = std::vector<int>    (numResidues, 0);
 h_dijkstra_unexplored_old                 = std::vector<int>    (numResidues, 0);
@@ -407,7 +417,7 @@ h_dijkstra_n_explored_old                 = std::vector<int>    (numResidues, 0)
     h_torsProfileRestGlobalIndices        = std::vector<int>    (numTorsProfileRestraints, -1);
     
     h_cartProfileRestAtomIndices          = std::vector<int>    (numCartProfileRestraints, -1);
-    h_cartProfileRestCoeffs               = std::vector<float>  (numCartProfileRestCoeffs, 0);
+    h_cartProfileRestCoeffs               = std::vector<float>  (numCartProfileRestParams, 0);
     h_cartProfileRestStartingCoeff        = std::vector<int>    (numCartProfileRestraints, -1);
     h_cartProfileRestDims                 = std::vector<float3> (numCartProfileRestraints, make_float3(0, 0, 0));
     h_cartProfileRestRes                  = std::vector<float3> (numCartProfileRestraints, make_float3(0, 0, 0));
@@ -750,12 +760,13 @@ void CudaCalcMeldForceKernel::setupCartProfileRestraints(const MeldForce& force)
     int numAtoms = system.getNumParticles();
     std::string restType = "Cartesian profile restraint";
     int currentParamIndex = 0;
-    
-    for (int i=0; i < numCartProfileRestCoeffs; ++i) {
+    /* // Straighten this out later
+    for (int i=0; i < numCartProfileRestParams; ++i) {
         float coeff;
-        force.getCartProfileRestraintCoeffs(i, coeff);
+        force.getCartProfileRestraintParams(i, coeff);
         h_cartProfileRestCoeffs[i] = coeff;
     }
+    */
     
     for (int i=0; i < numCartProfileRestraints; ++i) {
         int thisStart = currentParamIndex;
@@ -777,10 +788,20 @@ void CudaCalcMeldForceKernel::setupCartProfileRestraints(const MeldForce& force)
         h_cartProfileRestOrigin[i] = make_float3(origx, origy, origz);
         h_cartProfileRestGlobalIndices[i] = globalIndex;
         h_cartProfileRestScaleFactor[i] = scaleFactor;
+        
+        cout << "MeldCudaKernels Adding Cartesian Profile Restraint. atom " << atom << " startingCoeff:" << startingCoeff << " dims:" << dimx << ", "<< dimy << ", "<< dimz;
+    cout << " res:" << resx << ", "<< resy << ", "<< resz << " orig:" << origx << ", " << origy << ", " << origz << "\n";
 
         //int thisEnd = currentParamIndex;
         //h_torsProileRestParamBounds[i] = make_int2(thisStart, thisEnd);
     }
+    
+    cout << "MeldCudaKernels globalCartProfileRestCoeffs: ";
+    for (int i=0; i < numCartProfileRestCoeffs; ++i) {
+        h_globalCartProfileRestCoeffs[i] = force.getCartProfileRestCoeffs()[i];
+        cout << h_globalCartProfileRestCoeffs[i] << " ";
+    }
+    cout << "\n";
 }
 
 void CudaCalcMeldForceKernel::setupGroups(const MeldForce& force) {

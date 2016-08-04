@@ -79,11 +79,15 @@ public:
      * @return The number of residues. 
      */
     int getNumResidues() const;
+    
+    int getNumCartProfileRestCoeffs() const;
 
      /**
      * @return whether setting the alpha carbon list succeeded
      */
     int setAlphaCarbonVector(std::vector< int > alpha_carbon_vector) ;
+    
+    int uploadCartProfileRestCoeffs(std::vector< float > globalCartProfileRestCoeffsArg) ;
     
     int setDistRestSortedVector(std::vector< int > alpha_carbon_vector) ;
     
@@ -91,6 +95,8 @@ public:
     * @return The alpha carbon vector.
     */
     std::vector<int> getAlphaCarbons() const;
+    
+    std::vector<float> getCartProfileRestCoeffs() const;
     
     std::vector<int> getDistRestSorted() const;
 
@@ -254,10 +260,9 @@ public:
      * @param numActive  the number of active restraints in the group
      */
      
-     void getCartProfileRestraintParams(int index, int& atom, int startingCoeff,
-            int dimx, int dimy, int dimz, float resx, float resy, float resz, 
-            float origx, float origy, float origz,
-            float& scaleFactor, int& globalIndex) const;
+     void getCartProfileRestraintParams(int index, int& atom, int& startingCoeff,
+            int& dimx, int& dimy, int& dimz, float& resx, float& resy, float& resz, 
+            float& origx, float& origy, float& origz, float& scaleFactor, int& globalIndex) const;
 
     /**
      * Get the parameters for a group of restraints.
@@ -265,7 +270,7 @@ public:
      * @param index  the index of the group
      
      */
-     
+     /*
      void getCartProfileRestraintCoeffs(int index, float& coeff) const;
      /**
      * Get the coefficients for a Cartesian restraint
@@ -517,7 +522,7 @@ public:
      * @return the index of the group that was created
      */
      
-     int addCartProfileRestraint(int& atom, int startingCoeff,
+     int addCartProfileRestraint(int atom, int startingCoeff,
             int dimx, int dimy, int dimz, float resx, float resy, float resz, 
             float origx, float origy, float origz,float scaleFactor);
 
@@ -532,7 +537,7 @@ public:
      * @param origx/y/z: the origin of the grid in nm
      * @param scaleFactor  the scale factor
      */
-    void modifyCartProfileRestraint(int index, int& atom, int startingCoeff,
+    void modifyCartProfileRestraint(int index, int atom, int startingCoeff,
             int dimx, int dimy, int dimz, float resx, float resy, float resz, 
             float origx, float origy, float origz,float scaleFactor);
 
@@ -581,6 +586,7 @@ private:
     int starting_replica_index;
     
     std::vector< int > alpha_carbons;
+    std::vector< float > globalCartProfileRestCoeffs;
     std::vector< int > dist_rest_sorted;
     std::vector<DistanceRestraintInfo> distanceRestraints;
     std::vector<HyperbolicDistanceRestraintInfo> hyperbolicDistanceRestraints;

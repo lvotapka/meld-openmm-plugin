@@ -61,12 +61,13 @@ private:
     int numTorsProfileRestraints;
     int numTorsProfileRestParams;
     int numCartProfileRestraints;
-    int numCartProfileRestCoeffs;
+    int numCartProfileRestParams;
     int numRestraints;
     int numGroups;
     int numCollections;
     float ecoCutoff;
     int numResidues;
+    int numCartProfileRestCoeffs;
     int INF;
     int MAX_THREADS;
     int MAX_ECO_DEPTH;
@@ -101,6 +102,7 @@ private:
     CUfunction applyTorsionRestKernel;
     CUfunction applyDistProfileRestKernel;
     CUfunction applyTorsProfileRestKernel;
+    CUfunction applyCartProfileRestKernel;
     CUfunction computeContactsKernel;
     CUfunction computeEdgeListKernel;
     CUfunction dijkstra_initializeKernel;
@@ -157,6 +159,9 @@ private:
 
     OpenMM::CudaArray* alphaCarbons; // Indices of alpha carbons
     std::vector<int> h_alphaCarbons;
+    
+    OpenMM::CudaArray* globalCartProfileRestCoeffs;  // the coefficients for the Cartesian restraints
+    std::vector<float> h_globalCartProfileRestCoeffs;
     
     //std::vector<int> eco_output_freq; // the frequency at which to output ECO info
     
@@ -363,7 +368,7 @@ private:
     void setupTorsionRestraints(const MeldForce& force);
     void setupDistProfileRestraints(const MeldForce& force);
     void setupTorsProfileRestraints(const MeldForce& force);
-    void setupCartesianProfileRestraints(const MeldForce& force);
+    void setupCartProfileRestraints(const MeldForce& force);
     void setupGroups(const MeldForce& force);
     void setupCollections(const MeldForce& force);
     void validateAndUpload();

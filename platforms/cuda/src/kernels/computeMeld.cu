@@ -747,9 +747,12 @@ extern "C" __global__ void computeCartProfileRest(
                             float* __restrict__ restraintEnergies,      // global energy of each restraint
                             float3* __restrict__ forceBuffer,        // cache the forces for application later
                             const int numRestraints ) {
-                            
-                            forceBuffer[index] = 0.0; forceBuffer[index+1] = 0.0; forceBuffer[index+2] = 0.0; 
-                            restraintEnergies[globalIndex] = 0.0; // keep it at zero until Daniel gives the code to me
+    for (int index=blockIdx.x*blockDim.x+threadIdx.x; index<numRestraints; index+=gridDim.x*blockDim.x) {
+        // get my global index
+        int globalIndex = indexToGlobal[index];
+        forceBuffer[index].x = 0.0; forceBuffer[index+1].y = 0.0; forceBuffer[index+2].z = 0.0; 
+        restraintEnergies[globalIndex] = 0.0; // keep it at zero until Daniel gives the code to me
+    }
 }
 
 extern "C" __global__ void evaluateAndActivate(
@@ -1353,5 +1356,17 @@ extern "C" __global__ void applyTorsProfileRest(
         }
     }
     energyBuffer[threadIndex] += energyAccum;
+}
+
+extern "C" __global__ void applyCartProfileRest(
+                                unsigned long long * __restrict__ force,
+                                real* __restrict__ energyBuffer,
+                                const int* __restrict__ atomIndices,
+                                const int* __restrict__ globalIndices,
+                                const float3* __restrict__ restForces,
+                                const float* __restrict__ globalEnergies,
+                                const float* __restrict__ globalActive,
+                                const int numRestraints) {
+                                
 }
 

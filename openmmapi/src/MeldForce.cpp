@@ -68,7 +68,7 @@ int MeldForce::getNumCartProfileRestParams() const {
     int total = 0;
     for(std::vector<CartProfileRestraintInfo>::const_iterator iter=cartProfileRestraints.begin();
             iter != cartProfileRestraints.end(); ++iter) {
-        total += iter->nBins * iter->nBins;
+        total += 64;
     }
     return total;
 }
@@ -101,6 +101,10 @@ float MeldForce::getEcoCutoff() const {
 
 int MeldForce::getNumResidues() const {
     return alpha_carbons.size();
+}
+
+int MeldForce::getNumCartProfileRestCoeffs() const {
+    return globalCartProfileRestCoeffs.size();
 }
 
 int MeldForce::setEcoOutputFreq(int eco_output_freq_value) {
@@ -155,6 +159,18 @@ int MeldForce::setAlphaCarbonVector(std::vector< int > alpha_carbon_vector) {
     return 0;
 }
 
+int MeldForce::uploadCartProfileRestCoeffs(std::vector< float > globalCartProfileRestCoeffsArg) {
+    globalCartProfileRestCoeffs.swap(globalCartProfileRestCoeffsArg);
+    /*
+    cout << "globalCartProfileRestCoeffs: "; 
+    for (int i = 0; i < globalCartProfileRestCoeffs.size(); i++) {
+      cout << globalCartProfileRestCoeffs[i] << " ";
+    }
+    cout << "\n";
+    */
+    return 0;
+}
+
 int MeldForce::setDistRestSortedVector(std::vector< int > dist_rest_sorted_vector) {
     dist_rest_sorted.swap(dist_rest_sorted_vector);
     return 0;
@@ -162,6 +178,10 @@ int MeldForce::setDistRestSortedVector(std::vector< int > dist_rest_sorted_vecto
 
 std::vector<int> MeldForce::getAlphaCarbons() const {
     return alpha_carbons;
+}
+
+std::vector<float> MeldForce::getCartProfileRestCoeffs() const {
+    return globalCartProfileRestCoeffs;
 }
 
 std::vector<int> MeldForce::getDistRestSorted() const {
@@ -277,6 +297,27 @@ void MeldForce::modifyTorsProfileRestraint(int index, int atom1, int atom2, int 
                 scaleFactor, oldIndex);
 }
 
+int MeldForce::addCartProfileRestraint(int atom, int startingCoeff,
+            int dimx, int dimy, int dimz, float resx, float resy, float resz, 
+            float origx, float origy, float origz, float scaleFactor) {
+    cartProfileRestraints.push_back(
+            CartProfileRestraintInfo(atom, startingCoeff, dimx, dimy, dimz, 
+                resx, resy, resz, origx, origy, origz, scaleFactor, n_restraints));
+    n_restraints++;
+    
+    return n_restraints - 1;
+              
+}
+
+void MeldForce::modifyCartProfileRestraint(int index, int atom, int startingCoeff,
+            int dimx, int dimy, int dimz, float resx, float resy, float resz, 
+            float origx, float origy, float origz, float scaleFactor) {
+    int oldIndex = cartProfileRestraints[index].globalIndex;
+    cartProfileRestraints[index] = 
+        CartProfileRestraintInfo(atom, startingCoeff, dimx, dimy, dimz, 
+                resx, resy, resz, origx, origy, origz, scaleFactor, oldIndex);
+              
+}
 
 int MeldForce::addGroup(std::vector<int> restraint_indices, int n_active) {
     if (n_active < 0) {
@@ -403,6 +444,27 @@ void MeldForce::getTorsProfileRestraintParams(int index, int& atom1, int& atom2,
     a13 = rest.a13;
     a14 = rest.a14;
     a15 = rest.a15;
+    scaleFactor = rest.scaleFactor;
+    globalIndex = rest.globalIndex;
+}
+
+void MeldForce::getCartProfileRestraintParams(int index, int& atom, int& startingCoeff,
+            int& dimx, int& dimy, int& dimz, float& resx, float& resy, float& resz, 
+            float& origx, float& origy, float& origz, float& scaleFactor, int& globalIndex) const {
+    const CartProfileRestraintInfo& rest = cartProfileRestraints[index];
+
+    atom = rest.atom;
+    scaleFactor = rest.scaleFactor;
+    startingCoeff = rest.startingCoeff;
+    dimx = rest.dimx;
+    dimy = rest.dimy;
+    dimz = rest.dimz;
+    resx = rest.resx;
+    resy = rest.resy;
+    resz = rest.resz;
+    origx = rest.origx;
+    origy = rest.origy;
+    origz = rest.origz;
     scaleFactor = rest.scaleFactor;
     globalIndex = rest.globalIndex;
 }

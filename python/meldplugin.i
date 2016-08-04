@@ -14,6 +14,7 @@
 namespace std {
   %template(vectord) vector<double>;
   %template(vectori) vector<int>;
+  %template(vectorf) vector<float>;
 };
 
 
@@ -107,6 +108,8 @@ namespace MeldPlugin {
         
         int setAlphaCarbonVector(std::vector< int > alpha_carbon_vector);
         
+        int uploadCartProfileRestCoeffs(std::vector< float > globalCartProfileRestCoeffsArg);
+        
         int setDistRestSortedVector(std::vector< int > dist_rest_sorted_vector);
 
         int getNumTorsionRestraints() const;
@@ -118,6 +121,10 @@ namespace MeldPlugin {
         int getNumTorsProfileRestraints() const;
 
         int getNumTorsProfileRestParams() const;
+        
+        int getNumCartProfileRestraints() const;
+        
+        int getNumCartProfileRestParams() const;
 
         int getNumTotalRestraints() const;
 
@@ -263,7 +270,37 @@ namespace MeldPlugin {
         %clear std::vector<double>& a15;
         %clear float& scaleFactor;
         %clear int& globalIndex;
-
+        
+        %apply int& OUTPUT {int& atom};
+        %apply int& OUTPUT {int& startingCoeff};
+        %apply int& OUTPUT {int& dimx};
+        %apply int& OUTPUT {int& dimy};
+        %apply int& OUTPUT {int& dimz};
+        %apply float& OUTPUT {float& resx};
+        %apply float& OUTPUT {float& resy};
+        %apply float& OUTPUT {float& resz};
+        %apply float& OUTPUT {float& origx};
+        %apply float& OUTPUT {float& origy};
+        %apply float& OUTPUT {float& origz};
+        %apply float& OUTPUT {float& scaleFactor};
+        %apply int& OUTPUT {int& globalIndex};
+        void getCartProfileRestraintParams(int index, int& atom, int& startingCoeff,
+            int& dimx, int& dimy, int& dimz, float& resx, float& resy, float& resz, 
+            float& origx, float& origy, float& origz, float& scaleFactor, int& globalIndex) const;
+        %clear int& atom;
+        %clear int& startingCoeff;
+        %clear int& dimx;
+        %clear int& dimy;
+        %clear int& dimz;
+        %clear float& resx;
+        %clear float& resy;
+        %clear float& resz;
+        %clear float& origx;
+        %clear float& origy;
+        %clear float& origz;
+        %clear float& scaleFactor;
+        %clear int& globalIndex;
+        
         %apply std::vector<int>& OUTPUT {std::vector<int>& indices};
         %apply int& OUTPUT {int& numActive};
         void getGroupParams(int index, std::vector<int>& indices, int& numActive) const;
@@ -317,6 +354,14 @@ namespace MeldPlugin {
                 std::vector<double>  a9, std::vector<double> a10, std::vector<double> a11,
                 std::vector<double> a12, std::vector<double> a13, std::vector<double> a14,
                 std::vector<double> a15, float scaleFactor);
+                
+        int addCartProfileRestraint(int atom, int startingCoeff,
+                int dimx, int dimy, int dimz, float resx, float resy, float resz, 
+                float origx, float origy, float origz, float scaleFactor);
+                
+        void modifyCartProfileRestraint(int index, int atom, int startingCoeff,
+            int dimx, int dimy, int dimz, float resx, float resy, float resz, 
+            float origx, float origy, float origz, float scaleFactor);
 
         int addGroup(std::vector<int> restraint_indices, int n_active);
 
