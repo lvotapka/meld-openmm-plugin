@@ -755,6 +755,54 @@ extern "C" __global__ void computeCartProfileRest(
     }
 }
 
+
+extern "C" __global__ void computeCartProfileRest(
+                                        const real4* __restrict__ posq, const int* atom_indices,
+                                        const float* coeffs, const int* starting_coeffs,
+                                        const float3* dims, const float3* resolution,
+                                        const float3* origin, const float* scale_factor,
+                                        const int* global_indices, float* __restrict__ energies,
+                                        float3* __restrict__ force_buffer, const int num_restraints) {
+
+for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*gridDim.x) {
+
+            int x = floor((posq[atom_indices[tx]].x - origin[tx].x)/resolution[tx].x);
+            int y = floor((posq[atom_indices[tx]].y - origin[tx].y)/resolution[tx].y);
+            int z = floor((posq[atom_indices[tx]].z - origin[tx].z)/resolution[tx].z);
+
+            int count_x = dims[tx].x/resolution[tx].x;
+            int count_y = dims[tx].y/resolution[tx].y;
+            int count_z = dims[tx].z/resolution[tx].z;
+
+            int bin = x*count_x*count_z + y*count_z + z;
+
+            float energy = 0;
+
+            for (int pow_x = 0; pow_x < 4; pow_x++) {
+                for (int pow_y = 0; pow_y < 4; pow_y++) {
+                    for (int pow_z = 0; pow_z < 4; pow_z++) {
+                        int a_index = pow_x + 4*pow_y + 16*pow_z;
+                        float dx = posq[tx].x - origin[tx].x;
+                        float dy = posq[tx].y - origin[tx].y;
+                        float dz = posq[tx].z - origin[tx].z;
+                        float coefficient = coeffs[starting_coeffs[tx] + 64*bin + a_index]
+                        energy = energy + coefficient*pow(dx, pow_x)*pow(dy, pow_y)*pow(dz, pow_z);
+                        forcebuffer[index].x = forcebuffer[index].x - coefficient *
+                                               pow_x*pow(dx, pow_x-1)*pow(dy, pow_y)*pow(dz, pow_z);
+                        forcebuffer[index].y = forcebuffer[index].y - coefficient *
+                                               pow(dx, pow_x)*pow_y*pow(dy, pow_y-1)*pow(dz, pow_z);
+                        forcebuffer[index].z = forcebuffer[index].z - coefficient *
+                                               pow(dx, pow_x)*pow(dy, pow_y)*pow_z*pow(dz, pow_z-1);
+
+                    }
+                }
+            }
+            energies[global_indices[tx]] = energy * scale_factor[tx];
+}
+}
+
+
+
 extern "C" __global__ void evaluateAndActivate(
         const int numGroups,
         const int* __restrict__ numActiveArray,
@@ -1368,5 +1416,21 @@ extern "C" __global__ void applyCartProfileRest(
                                 const float* __restrict__ globalActive,
                                 const int numRestraints) {
                                 
+    int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
+    float energyAccum = 0.0;
+
+    for (int restraintIndex=blockIdx.x*blockDim.x+threadIdx.x; restraintIndex<numRestraints; restraintIndex+=blockDim.x*gridDim.x) {
+        int globalIndex = globalIndices[restraintIndex];
+        if (globalActive[globalIndex]) {
+            int index1 = atomIndices[restraintIndex];
+            energyAccum += globalEnergies[globalIndex];
+            float3 f = restForces[restraintIndex];
+
+            atomicAdd(&force[index1], static_cast<unsigned long long>((long long) (-f.x*0x100000000)));
+            atomicAdd(&force[index1  + PADDED_NUM_ATOMS], static_cast<unsigned long long>((long long) (-f.y*0x100000000)));
+            atomicAdd(&force[index1 + 2 * PADDED_NUM_ATOMS], static_cast<unsigned long long>((long long) (-f.z*0x100000000)));
+        }
+    }
+    energyBuffer[threadIndex] += energyAccum;
 }
 
