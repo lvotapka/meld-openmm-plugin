@@ -163,7 +163,7 @@ extern "C" __global__ void dijkstra_initialize(bool* __restrict__ unexplored,
   if (index < n_nodes) {
     unexplored[index] = true;
     frontier[index] = false;
-    distance[index] = abs(index - src); //LARGE;
+    distance[index] = abs(index - src);
     n_explored[index] = 0;
     if (index == src) {
       unexplored[index] = false;
@@ -315,7 +315,7 @@ extern "C" __global__ void computeDistRest(
                             //float* __restrict__ co_values,          // the CO values (contact order)
                             int* __restrict__ indexToGlobal,            // array of indices into global arrays
                             float* __restrict__ energies,               // global array of restraint energies
-                            //float* __restrict__ nonECOenergies,         // global array of non-ECO-modified restraint energies
+                            float* __restrict__ nonECOenergies,         // global array of non-ECO-modified restraint energies
                             float3* __restrict__ forceBuffer,           // temporary buffer to hold the force
                             const int numRestraints) {
     for (int index=blockIdx.x*blockDim.x+threadIdx.x; index<numRestraints; index+=blockDim.x*gridDim.x) { // clever code to keep updating parameters even if the GPU isn't big enough for them
@@ -351,7 +351,7 @@ extern "C" __global__ void computeDistRest(
 
         // compute force and energy
         float energy = 0.0;
-        //float nonECOenergy = 0.0;
+        float nonECOenergy = 0.0;
         float dEdR = 0.0;
         float diff = 0.0;
         float diff2 = 0.0;
@@ -384,12 +384,12 @@ extern "C" __global__ void computeDistRest(
             dEdR = k * (r4 - r3);
         }
         
-        //nonECOenergy = energy;
+        nonECOenergy = energy;
         
         if ((doing_eco == true) && (eco_value > 0.0)) { // make sure we want to do eco and that the eco value is positive
           assert(eco_value >= 1.0); // This should catch any weird floating point problems
           force_eco_multiple =  (eco_constant + eco_factor / eco_value);
-          energy_eco_multiple = (eco_constant + eco_linear*eco_value + eco_factor / eco_value);
+          energy_eco_multiple = (eco_constant + eco_factor / eco_value);
           if (force_eco_multiple < 0.0) {
             force_eco_multiple = 0.0; // we don't want a force driving things apart
           }
@@ -397,6 +397,7 @@ extern "C" __global__ void computeDistRest(
             energy_eco_multiple = 0.0; // we don't want a force driving things apart
           }
           energy *= energy_eco_multiple; // ECO adjustments here
+          energy += eco_linear*eco_value; // adds eco to the energy instead of multiplying
           dEdR   *= force_eco_multiple;
         }
 
@@ -414,7 +415,7 @@ extern "C" __global__ void computeDistRest(
 
         // store energy into global buffer
         energies[globalIndex] = energy;
-        //nonECOenergies[globalIndex] = nonECOenergy;
+        nonECOenergies[globalIndex] = nonECOenergy;
     }
 }
 
@@ -1116,7 +1117,7 @@ extern "C" __global__ void applyDistRest(
                                 const int* __restrict__ globalIndices,
                                 const float3* __restrict__ restForces,
                                 const float* __restrict__ globalEnergies,
-                                //const float* __restrict__ globalNonEcoEnergies,
+                                const float* __restrict__ globalNonEcoEnergies,
                                 const float* __restrict__ globalActive,
                                 const int numDistRestraints) {
     int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1128,8 +1129,8 @@ extern "C" __global__ void applyDistRest(
             int index1 = atomIndices[restraintIndex].x;
             int index2 = atomIndices[restraintIndex].y;
             // comment out both lines below to completely disregard any MELD energy contributions to the Replica exchange probabilities
-            energyAccum += globalEnergies[globalIndex]; // the old way, using energies with ECO and all
-            //energyAccum += globalNonEcoEnergies[globalIndex]; // the new way, using energies without ECO
+            //energyAccum += globalEnergies[globalIndex]; // the old way, using energies with ECO and all
+            energyAccum += globalNonEcoEnergies[globalIndex]; // the new way, using energies without ECO
             float3 f = restForces[restraintIndex];
 
             atomicAdd(&force[index1], static_cast<unsigned long long>((long long) (-f.x*0x100000000)));
