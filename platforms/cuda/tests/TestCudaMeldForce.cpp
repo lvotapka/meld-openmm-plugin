@@ -134,6 +134,211 @@ void testDistRest() {
     ASSERT_EQUAL_VEC(expectedForce, stateV.getForces()[0], 1e-5);
     ASSERT_EQUAL_VEC(-expectedForce, stateV.getForces()[1], 1e-5);
 }
+/* // I can't figure out how to make this work right now
+void CudaCalcMeldForceKernel::testEverythingEco() {
+  
+  
+  int counter, counter2, contact_ptr, order;
+  float err_tol = 0.0001;
+  float dist_sq;
+  float x, y, z;
+  int src = 0;
+  int num_explored = 1;
+  int edge_index, head;
+  
+  // setup system
+  const int numParticles = 4;
+  System system;
+  vector<Vec3> positions(numParticles);
+  system.addParticle(1.0);
+  system.addParticle(1.0); // add four particles
+  system.addParticle(1.0);
+  system.addParticle(1.0);
+
+  // setup meld force
+  MeldForce* force = new MeldForce();
+  int k = 1.0;
+  bool doing_eco = true;
+  float eco_factor = 0.0;
+  float eco_constant = 0.0;
+  float eco_linear = 1.0;
+  int restIdx0 = force->addDistanceRestraint(0, 1, 1.0, 2.0, 3.0, 4.0, k, doing_eco, eco_factor, eco_constant, eco_linear, 0, 0);
+  int restIdx1 = force->addDistanceRestraint(1, 2, 1.0, 2.0, 3.0, 4.0, k, doing_eco, eco_factor, eco_constant, eco_linear, 0, 0);
+  int restIdx2 = force->addDistanceRestraint(2, 3, 1.0, 2.0, 3.0, 4.0, k, doing_eco, eco_factor, eco_constant, eco_linear, 0, 0);
+  
+  std::vector<int> restIndices(3);
+  restIndices[0] = restIdx0;
+  restIndices[1] = restIdx1;
+  restIndices[2] = restIdx2;
+  int groupIdx = force->addGroup(restIndices, 1);
+  std::vector<int> groupIndices(1);
+  groupIndices[0] = groupIdx;
+  force->addCollection(groupIndices, 1);
+  system.addForce(force);
+
+  // setup the context
+  VerletIntegrator integ(1.0);
+  Platform& platform = Platform::getPlatformByName("CUDA");
+  Context context(system, integ, platform);
+
+  // test region I
+  // set the postitions, compute the forces and energy
+  // test to make sure they have the expected values
+  positions[0] = Vec3(0.0, 0.0, 0.0);
+  positions[1] = Vec3(0.5, 0.0, 0.0);
+  positions[2] = Vec3(1.0, 0.0, 0.0);
+  positions[3] = Vec3(1.5, 0.0, 0.0);
+  
+  context.setPositions(positions);
+
+  //float expectedEnergy = 1.0;
+  //Vec3 expectedForce = Vec3(-1.0, 0.0, 0.0);
+
+  /*
+  State stateI = context.getState(State::Energy | State::Forces);
+  ASSERT_EQUAL_TOL(expectedEnergy, stateI.getPotentialEnergy(), 1e-5);
+  ASSERT_EQUAL_VEC(expectedForce, stateI.getForces()[0], 1e-5);
+  ASSERT_EQUAL_VEC(-expectedForce, stateI.getForces()[1], 1e-5);
+  */
+  
+  // We need to run a series of tests to make sure that everything is behaving like we expect
+  /*
+  void* test_get_alpha_carbon_posqArgs[] = {
+    &cu.getPosq().getDevicePointer(),
+    &alphaCarbonPosq->getDevicePointer(),
+    &alphaCarbons->getDevicePointer(),
+    &numResidues
+  };
+  cu.executeKernel(test_get_alpha_carbon_posqKernel, test_get_alpha_carbon_posqArgs, numResidues);
+  
+  //cout << "mark0\n";
+  alphaCarbonPosq->download(h_alphaCarbonPosq);
+  /*cout << "Alpha Carbon x,y,z:\n";
+  for (counter = 0; counter < numResidues; counter++) {
+    cout << h_alphaCarbonPosq[counter*3] << "," << h_alphaCarbonPosq[counter*3 + 1] << "," << h_alphaCarbonPosq[counter*3 + 2] << " ";
+  }
+  cout << "\n";  
+  distanceRestContacts->download(h_distanceRestContacts);
+  
+  /*
+  for (counter = 0; counter < numResidues; counter++) {
+    contact_ptr = 0;
+    for (counter2 = 0; counter2 < numResidues; counter2++) {
+      x = h_alphaCarbonPosq[counter*3] - h_alphaCarbonPosq[counter2*3];
+      y = h_alphaCarbonPosq[counter*3 + 1] - h_alphaCarbonPosq[counter2*3 + 1];
+      z = h_alphaCarbonPosq[counter*3 + 2] - h_alphaCarbonPosq[counter2*3 + 2];
+      dist_sq = x*x + y*y + z*z;
+      if ( h_distanceRestContacts[numResidues * counter + contact_ptr] == counter2 ) { // then we've hit an edge
+        //cout << "Edge between node: " << counter << " and node: " << counter2 << "\n";
+        if (dist_sq > ecoCutoff*ecoCutoff && (counter != counter2 - 1 || counter != counter2 + 1)) { // so if the actual distance is greater than expected, then something's wrong
+          cout << "ERROR: contact map problem: counter: " << counter << " counter2: " << counter2 << " contact predicted to exist yet distance squared is: " << dist_sq << "\n";
+        }
+        contact_ptr++; // increment this pointer
+      } else { // no contact predicted
+        if (dist_sq < ecoCutoff*ecoCutoff && counter != counter2) { // so if the actual distance is less than cutoff, then something's wrong
+          cout << "ERROR: contact map problem: counter: " << counter << " counter2: " << counter2 << " contact predicted not to exist yet distance squared is: " << dist_sq << "\n";
+        }
+      }
+    }
+  }*
+  
+  
+  // Now test Dijkstra's algorithm results
+  for (counter = 0; counter < numResidues; counter++) { // first, initialize the arrays
+    h_dijkstra_unexplored[counter] = true;
+    h_dijkstra_frontier[counter] = false;
+    h_dijkstra_distance[counter] = abs(counter - src);
+    h_dijkstra_n_explored[counter] = 0;
+    if (counter == src) {
+      h_dijkstra_unexplored[counter] = false;
+      h_dijkstra_frontier[counter] = true;
+      h_dijkstra_distance[counter] = 0;
+    }
+  }
+    
+  distanceRestEdgeCounts->download(h_distanceRestEdgeCounts);
+  
+  counter2 = 0;
+  num_explored = 1;
+  while ((counter2 <= MAX_ECO_DEPTH) && (num_explored < numResidues)) {
+    for (counter = 0; counter < numResidues; counter++) { // save the old arrays
+      h_dijkstra_unexplored_old[counter] = h_dijkstra_unexplored[counter];
+      h_dijkstra_frontier_old[counter] = h_dijkstra_frontier[counter];
+    }
+    
+    for (counter = 0; counter < numResidues; counter++) { // settle and update
+      h_dijkstra_n_explored[counter] = 0;
+      if (h_dijkstra_unexplored_old[counter] == true) {
+        for (contact_ptr = 0; contact_ptr < h_distanceRestEdgeCounts[counter]; contact_ptr++) {
+          edge_index = (numResidues * counter) + contact_ptr;
+          head = h_distanceRestContacts[edge_index];  // the index of the node that is leading to this one
+          //cout << "edge from node " << counter << " to " << head << "\n";
+          if (h_dijkstra_frontier_old[head] == true) { // if the head node is on the frontier, the we need to change our explored status
+            h_dijkstra_frontier[counter] = true; // then add myself to the frontier
+            h_dijkstra_unexplored[counter] = false; // remove myself from the unexplored
+            h_dijkstra_distance[counter] = counter2 + 1; // the number of iterations we've needed to find me is the distance
+            num_explored++;
+            break;
+          }
+        }
+      }
+    }
+    counter2++;
+  }
+  
+  // Now rerun the GPU pathfinding algorithm
+   void* dijkstra_initializeArgs[] = {
+  &dijkstra_unexplored->getDevicePointer(),
+  &dijkstra_frontier->getDevicePointer(),
+  &dijkstra_distance->getDevicePointer(),
+  &dijkstra_n_explored->getDevicePointer(),
+  &src,
+  &INF,
+  &numResidues};
+  
+    /*void* dijkstra_save_oldArgs[] = {
+  &dijkstra_unexplored->getDevicePointer(),
+  &dijkstra_unexplored_old->getDevicePointer(),
+  &dijkstra_frontier->getDevicePointer(),
+  &dijkstra_frontier_old->getDevicePointer(),
+  &numResidues};
+  *
+    void* dijkstra_settle_and_updateArgs[] = {
+  &dijkstra_unexplored->getDevicePointer(),
+  &dijkstra_unexplored_old->getDevicePointer(),
+  &dijkstra_frontier->getDevicePointer(),
+  &dijkstra_frontier_old->getDevicePointer(),
+  &dijkstra_distance->getDevicePointer(),
+  &distanceRestEdgeCounts->getDevicePointer(),
+  &distanceRestContacts->getDevicePointer(),
+  &dijkstra_n_explored->getDevicePointer(),
+  &counter2,
+  &numResidues};
+  
+    /*void* dijkstra_log_reduceArgs[] = {
+  &numResidues,
+  &dijkstra_n_explored->getDevicePointer(),
+  &dijkstra_total->getDevicePointer()};
+  *
+  cu.executeKernel(dijkstra_initializeKernel, dijkstra_initializeArgs, numResidues);
+  counter2 = 0;
+  num_explored = 1;
+  
+  while ((counter2 <= MAX_ECO_DEPTH) && (num_explored < numResidues)) {
+    cu.executeKernel(dijkstra_settle_and_updateKernel, dijkstra_settle_and_updateArgs, numResidues);
+    //num_explored += h_dijkstra_total[0];
+    counter2++;
+  }
+  
+  // by this point, the graphs should be explored
+  dijkstra_distance->download(h_dijkstra_distance2);
+  for (counter = 0; counter < numResidues; counter++) {
+    if (h_dijkstra_distance[counter] != h_dijkstra_distance2[counter] ) { // if these two distances are not equal, then one of the pathfinding algorithms is broken
+      cout << "ERROR: pathfinding algorithm discrepancy. Src: 0. Dest: " << counter << " (CPU): " << h_dijkstra_distance[counter] << " (GPU): " << h_dijkstra_distance2[counter] << "\n";
+    }
+  }
+  
+} */
 
 void testHyperbolicDistRest() {
     // setup system
@@ -555,6 +760,7 @@ int main(int argc, char* argv[]) {
         if (argc > 1)
             Platform::getPlatformByName("CUDA").setPropertyDefaultValue("CudaPrecision", string(argv[1]));
         testDistRest();
+        //testEverythingEco();
         testDistRestChangingParameters();
         testHyperbolicDistRest();
         testTorsRest();

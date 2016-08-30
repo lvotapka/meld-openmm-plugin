@@ -734,6 +734,7 @@ extern "C" __global__ void computeTorsProfileRest(
     }
 }
 
+/* // This was Lane's old kernel DELETE
 extern "C" __global__ void computeCartProfileRest(
                             const real4* __restrict__ posq,             // positions and charges
                             const int* __restrict__ atomIndex,         // i for Cartesian rest.
@@ -754,6 +755,7 @@ extern "C" __global__ void computeCartProfileRest(
         restraintEnergies[globalIndex] = 0.0; // keep it at zero until Daniel gives the code to me
     }
 }
+*/
 
 
 extern "C" __global__ void computeCartProfileRest(
@@ -762,42 +764,110 @@ extern "C" __global__ void computeCartProfileRest(
                                         const float3* dims, const float3* resolution,
                                         const float3* origin, const float* scale_factor,
                                         const int* global_indices, float* __restrict__ energies,
-                                        float3* __restrict__ force_buffer, const int num_restraints) {
+                                        float3* __restrict__ force_buffer, float3* pos_buffer, const int numRestraints) {
 
 for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*gridDim.x) {
 
-            int x = floor((posq[atom_indices[tx]].x - origin[tx].x)/resolution[tx].x);
-            int y = floor((posq[atom_indices[tx]].y - origin[tx].y)/resolution[tx].y);
-            int z = floor((posq[atom_indices[tx]].z - origin[tx].z)/resolution[tx].z);
+            float x = floor((posq[atom_indices[tx]].x - origin[tx].x)/resolution[tx].x);
+            float y = floor((posq[atom_indices[tx]].y - origin[tx].y)/resolution[tx].y);
+            float z = floor((posq[atom_indices[tx]].z - origin[tx].z)/resolution[tx].z);
+            
+            float dx = posq[atom_indices[tx]].x - (origin[tx].x + x*resolution[tx].x);
+            float dy = posq[atom_indices[tx]].y - (origin[tx].y + y*resolution[tx].y); // the position of the atom in relation to the corner of this bin
+            float dz = posq[atom_indices[tx]].z - (origin[tx].z + z*resolution[tx].z);
+            
+            bool out_of_bounds = false;
+            
+            if (x < 0) { // make sure that we fall within the boundaries of the grid
+              x = 0;
+              dx = 0;
+              out_of_bounds = true;
+            } 
+            if (y < 0) {
+              y = 0;
+              dy = 0;
+              out_of_bounds = true;
+            } 
+            if (z < 0) {
+              z = 0;
+              dz = 0;
+              out_of_bounds = true;
+            }
+            if (x > dims[tx].x) {
+              x = dims[tx].x;
+              dx = resolution[tx].x;
+              out_of_bounds = true;
+            } 
+            if (y > dims[tx].y) {
+              y = dims[tx].y;
+              dy = resolution[tx].y;
+              out_of_bounds = true;
+            } 
+            if (z > dims[tx].z) {
+              z = dims[tx].z;
+              dz = resolution[tx].z;
+              out_of_bounds = true;
+            } 
+            
+            // DEBUG
+            pos_buffer[tx].x = posq[atom_indices[tx]].x;
+            pos_buffer[tx].y = posq[atom_indices[tx]].y;
+            pos_buffer[tx].z = posq[atom_indices[tx]].z;
 
-            int count_x = dims[tx].x/resolution[tx].x;
-            int count_y = dims[tx].y/resolution[tx].y;
-            int count_z = dims[tx].z/resolution[tx].z;
+            //int count_x = dims[tx].x/resolution[tx].x;
+            //int count_y = dims[tx].y/resolution[tx].y; // should not be necessary
+            //int count_z = dims[tx].z/resolution[tx].z;
 
-            int bin = x*count_x*count_z + y*count_z + z;
+            //int bin = x*count_x*count_z + y*count_z + z; // not necessary
+            int bin = x*dims[tx].y*dims[tx].z + y*dims[tx].z + z;
 
             float energy = 0;
-
+            float3 force;
+            force.x = 0; 
+            force.y = 0; 
+            force.z = 0;
+            float norm_dx = dx / resolution[tx].x;
+            float norm_dy = dy / resolution[tx].y; // Does not need to be computed every time
+            float norm_dz = dz / resolution[tx].z;
+            
             for (int pow_x = 0; pow_x < 4; pow_x++) {
                 for (int pow_y = 0; pow_y < 4; pow_y++) {
                     for (int pow_z = 0; pow_z < 4; pow_z++) {
                         int a_index = pow_x + 4*pow_y + 16*pow_z;
-                        float dx = posq[tx].x - origin[tx].x;
-                        float dy = posq[tx].y - origin[tx].y;
-                        float dz = posq[tx].z - origin[tx].z;
-                        float coefficient = coeffs[starting_coeffs[tx] + 64*bin + a_index]
-                        energy = energy + coefficient*pow(dx, pow_x)*pow(dy, pow_y)*pow(dz, pow_z);
-                        forcebuffer[index].x = forcebuffer[index].x - coefficient *
-                                               pow_x*pow(dx, pow_x-1)*pow(dy, pow_y)*pow(dz, pow_z);
-                        forcebuffer[index].y = forcebuffer[index].y - coefficient *
-                                               pow(dx, pow_x)*pow_y*pow(dy, pow_y-1)*pow(dz, pow_z);
-                        forcebuffer[index].z = forcebuffer[index].z - coefficient *
-                                               pow(dx, pow_x)*pow(dy, pow_y)*pow_z*pow(dz, pow_z-1);
+                        
+                        float coefficient = coeffs[starting_coeffs[tx] + 64*bin + a_index];
+                        energy = energy + coefficient*pow(norm_dx, (float) pow_x)*pow(norm_dy, (float) pow_y)*pow(norm_dz, (float) pow_z);
+                        if (pow_x > 0) {
+                            force.x = force.x - coefficient *
+                                               pow_x*pow(norm_dx, (float) (pow_x-1) )*pow(norm_dy, (float) pow_y)*pow(norm_dz, (float) pow_z); }
+                        if (pow_y > 0) {
+                            force.y = force.y - coefficient *
+                                               pow(norm_dx, (float) pow_x)*pow_y*pow(norm_dy, (float) (pow_y-1) )*pow(norm_dz, (float) pow_z); } // ALERT: this might be a problem for detailed balance if out of grid boundary
+                        if (pow_z > 0) {
+                            force.z = force.z - coefficient *
+                                               pow(norm_dx, (float) pow_x)*pow(norm_dy, (float) pow_y)*pow_z*pow(norm_dz, (float) (pow_z-1) ); }
 
                     }
                 }
             }
+            
+            /*
+            if (out_of_bounds == true) { // If we go out of bounds, then just set the force to zero.
+                force.x = 0; 
+                force.y = 0; 
+                force.z = 0;
+            }
+            */
+            
+            assert(isfinite(energy));
+            assert(isfinite(force.x));
+            assert(isfinite(force.y));
+            assert(isfinite(force.z));
+                 
             energies[global_indices[tx]] = energy * scale_factor[tx];
+            force_buffer[tx].x = force.x * scale_factor[tx];
+            force_buffer[tx].y = force.y * scale_factor[tx];
+            force_buffer[tx].z = force.z * scale_factor[tx];
 }
 }
 

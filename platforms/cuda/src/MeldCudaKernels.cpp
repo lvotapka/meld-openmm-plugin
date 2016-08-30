@@ -83,7 +83,7 @@ CudaCalcMeldForceKernel::CudaCalcMeldForceKernel(std::string name, const Platfor
     distanceRestContacts = NULL;
     distanceRestEdgeCounts = NULL;
     alphaCarbons = NULL;
-    globalCartProfileRestCoeffs = NULL;
+    //globalCartProfileRestCoeffs = NULL;
     dijkstra_unexplored = NULL;
     dijkstra_unexplored_old = NULL;
     dijkstra_frontier = NULL;
@@ -134,6 +134,7 @@ CudaCalcMeldForceKernel::CudaCalcMeldForceKernel(std::string name, const Platfor
     cartProfileRestScaleFactor = NULL;
     cartProfileRestGlobalIndices = NULL;
     cartProfileRestForces = NULL;
+    cartProfilePosBuffer = NULL;
     
     restraintEnergies = NULL;
     //nonECOrestraintEnergies = NULL;
@@ -164,7 +165,7 @@ CudaCalcMeldForceKernel::~CudaCalcMeldForceKernel() {
     delete distanceRestContacts;
     delete distanceRestEdgeCounts;
     delete alphaCarbons;
-    delete globalCartProfileRestCoeffs;
+    //delete globalCartProfileRestCoeffs;
     delete dijkstra_unexplored;
     delete dijkstra_unexplored_old;
     delete dijkstra_frontier;
@@ -215,6 +216,7 @@ CudaCalcMeldForceKernel::~CudaCalcMeldForceKernel() {
     delete cartProfileRestScaleFactor;
     delete cartProfileRestGlobalIndices;
     delete cartProfileRestForces;
+    delete cartProfilePosBuffer;
     delete restraintEnergies;
     //delete nonECOrestraintEnergies;
     delete restraintActive;
@@ -240,7 +242,8 @@ void CudaCalcMeldForceKernel::allocateMemory(const MeldForce& force) {
     numTorsProfileRestraints = force.getNumTorsProfileRestraints();
     numTorsProfileRestParams = force.getNumTorsProfileRestParams();
     numCartProfileRestraints = force.getNumCartProfileRestraints();
-    numCartProfileRestParams = force.getNumCartProfileRestParams();    
+    //numCartProfileRestParams = force.getNumCartProfileRestParams();  
+    //cout << "numCartProfileRestParams:" <<   numCartProfileRestParams << "\n";
     
     numRestraints = force.getNumTotalRestraints();
     numGroups = force.getNumGroups();
@@ -248,6 +251,7 @@ void CudaCalcMeldForceKernel::allocateMemory(const MeldForce& force) {
     ecoCutoff = force.getEcoCutoff();
     numResidues = force.getNumResidues();
     numCartProfileRestCoeffs = force.getNumCartProfileRestCoeffs();
+    cout << "numCartProfileRestCoeffs: " << numCartProfileRestCoeffs << "\n";
     eco_output_freq = force.getEcoOutputFreq();
     print_avg_eco = force.getPrintAvgEco();
     print_eco_value_array = force.getPrintEcoValueArray();
@@ -283,7 +287,7 @@ void CudaCalcMeldForceKernel::allocateMemory(const MeldForce& force) {
         
         
 	alphaCarbons		                 = CudaArray::create<int>    ( cu, numResidues, "alphaCarbons");
-	globalCartProfileRestCoeffs      = CudaArray::create<float>  ( cu, numCartProfileRestCoeffs, "globalCartProfileRestCoeffs");
+	//globalCartProfileRestCoeffs      = CudaArray::create<float>  ( cu, numCartProfileRestCoeffs, "globalCartProfileRestCoeffs");
 	dijkstra_unexplored              = CudaArray::create<bool>   ( cu, numResidues, "dijkstra_unexplored");
   dijkstra_unexplored_old          = CudaArray::create<bool>   ( cu, numResidues, "dijkstra_unexplored_old");
   dijkstra_frontier                = CudaArray::create<bool>   ( cu, numResidues, "dijkstra_frontier");
@@ -336,7 +340,7 @@ void CudaCalcMeldForceKernel::allocateMemory(const MeldForce& force) {
     
     if (numCartProfileRestraints > 0) {
         cartProfileRestAtomIndices   = CudaArray::create<int>    (cu, numCartProfileRestraints, "cartProfileRestAtomIndices");
-        cartProfileRestCoeffs        = CudaArray::create<float>  (cu, numCartProfileRestParams, "cartProfileRestCoeffs");
+        cartProfileRestCoeffs        = CudaArray::create<float>  (cu, numCartProfileRestCoeffs, "cartProfileRestCoeffs");
         cartProfileRestStartingCoeff = CudaArray::create<int>    (cu, numCartProfileRestraints, "cartProfileRestStartingCoeff");
         cartProfileRestDims          = CudaArray::create<float3> (cu, numCartProfileRestraints, "cartProfileRestDims");
         cartProfileRestRes           = CudaArray::create<float3> (cu, numCartProfileRestraints, "cartProfileRestRes");
@@ -344,6 +348,7 @@ void CudaCalcMeldForceKernel::allocateMemory(const MeldForce& force) {
         cartProfileRestScaleFactor   = CudaArray::create<float>  (cu, numCartProfileRestraints, "cartProfileRestScaleFactor");
         cartProfileRestGlobalIndices = CudaArray::create<int>    (cu, numCartProfileRestraints, "cartProfileRestGlobalIndices");
         cartProfileRestForces        = CudaArray::create<float3> (cu, numCartProfileRestraints, "cartProfileRestForces");
+        cartProfilePosBuffer         = CudaArray::create<float3> (cu, numCartProfileRestraints, "cartProfilePosBuffer");
     }
 
     restraintEnergies         = CudaArray::create<float>  ( cu, numRestraints,     "restraintEnergies");
@@ -370,7 +375,7 @@ void CudaCalcMeldForceKernel::allocateMemory(const MeldForce& force) {
     h_distanceRestEcoLinears              = std::vector<float>  (numDistRestraints, 0);
     //h_distanceRestCOValues                = std::vector<float>  (numDistRestraints, 0);
     h_alphaCarbons                        = std::vector<int>    (numResidues, 0);
-    h_globalCartProfileRestCoeffs         = std::vector<float>  (numCartProfileRestCoeffs, 0);
+    //h_globalCartProfileRestCoeffs         = std::vector<float>  (numCartProfileRestCoeffs, 0);
     h_distRestSorted                      = std::vector<int>    (numDistRestraints * 3, 0);
 h_restraintEnergies                       = std::vector<float>  (numRestraints, 0.0);
 h_restraintNonEcoEnergies                 = std::vector<float>  (numRestraints, 0);
@@ -417,13 +422,15 @@ h_dijkstra_n_explored_old                 = std::vector<int>    (numResidues, 0)
     h_torsProfileRestGlobalIndices        = std::vector<int>    (numTorsProfileRestraints, -1);
     
     h_cartProfileRestAtomIndices          = std::vector<int>    (numCartProfileRestraints, -1);
-    h_cartProfileRestCoeffs               = std::vector<float>  (numCartProfileRestParams, 0);
+    h_cartProfileRestCoeffs               = std::vector<float>  (numCartProfileRestCoeffs, 0);
     h_cartProfileRestStartingCoeff        = std::vector<int>    (numCartProfileRestraints, -1);
     h_cartProfileRestDims                 = std::vector<float3> (numCartProfileRestraints, make_float3(0, 0, 0));
     h_cartProfileRestRes                  = std::vector<float3> (numCartProfileRestraints, make_float3(0, 0, 0));
     h_cartProfileRestOrigin               = std::vector<float3> (numCartProfileRestraints, make_float3(0, 0, 0));
     h_cartProfileRestScaleFactor          = std::vector<float>  (numCartProfileRestraints, 0);
     h_cartProfileRestGlobalIndices        = std::vector<int>    (numCartProfileRestraints, -1);
+    h_cartProfileRestForces               = std::vector<float3> (numCartProfileRestraints, make_float3(0, 0, 0));
+    h_cartProfilePosBuffer                = std::vector<float3> (numCartProfileRestraints ,make_float3(0, 0, 0));
     
     h_groupRestraintIndices               = std::vector<int>    (numRestraints, -1);
     h_groupBounds                         = std::vector<int2>   (numGroups, make_int2( -1, -1));
@@ -760,13 +767,7 @@ void CudaCalcMeldForceKernel::setupCartProfileRestraints(const MeldForce& force)
     int numAtoms = system.getNumParticles();
     std::string restType = "Cartesian profile restraint";
     int currentParamIndex = 0;
-    /* // Straighten this out later
-    for (int i=0; i < numCartProfileRestParams; ++i) {
-        float coeff;
-        force.getCartProfileRestraintParams(i, coeff);
-        h_cartProfileRestCoeffs[i] = coeff;
-    }
-    */
+    
     
     for (int i=0; i < numCartProfileRestraints; ++i) {
         int thisStart = currentParamIndex;
@@ -796,12 +797,13 @@ void CudaCalcMeldForceKernel::setupCartProfileRestraints(const MeldForce& force)
         //h_torsProileRestParamBounds[i] = make_int2(thisStart, thisEnd);
     }
     
-    cout << "MeldCudaKernels globalCartProfileRestCoeffs: ";
+    cout << "MeldCudaKernels cartProfileRestCoeffs: ";
     for (int i=0; i < numCartProfileRestCoeffs; ++i) {
-        h_globalCartProfileRestCoeffs[i] = force.getCartProfileRestCoeffs()[i];
-        cout << h_globalCartProfileRestCoeffs[i] << " ";
+        h_cartProfileRestCoeffs[i] = force.getCartProfileRestCoeffs()[i];
+        cout << h_cartProfileRestCoeffs[i] << " ";
     }
     cout << "\n";
+    
 }
 
 void CudaCalcMeldForceKernel::setupGroups(const MeldForce& force) {
@@ -1151,154 +1153,6 @@ void CudaCalcMeldForceKernel::calcEcoValues() {
   cout << "Time to do Dijkstra for all restraints: " << timediff << "\n"; */
 }
 
-void CudaCalcMeldForceKernel::testEverythingEco() {
-  int counter, counter2, contact_ptr, order;
-  float err_tol = 0.0001;
-  float dist_sq;
-  float x, y, z;
-  int src = 0;
-  int num_explored = 1;
-  int edge_index, head;
-  
-  // We need to run a series of tests to make sure that everything is behaving like we expect
-  void* test_get_alpha_carbon_posqArgs[] = {
-    &cu.getPosq().getDevicePointer(),
-    &alphaCarbonPosq->getDevicePointer(),
-    &alphaCarbons->getDevicePointer(),
-    &numResidues
-  };
-  
-  cu.executeKernel(test_get_alpha_carbon_posqKernel, test_get_alpha_carbon_posqArgs, numResidues);
-  
-  //cout << "mark0\n";
-  alphaCarbonPosq->download(h_alphaCarbonPosq);
-  /*cout << "Alpha Carbon x,y,z:\n";
-  for (counter = 0; counter < numResidues; counter++) {
-    cout << h_alphaCarbonPosq[counter*3] << "," << h_alphaCarbonPosq[counter*3 + 1] << "," << h_alphaCarbonPosq[counter*3 + 2] << " ";
-  }
-  cout << "\n";  */
-  distanceRestContacts->download(h_distanceRestContacts);
-  
-  /*
-  for (counter = 0; counter < numResidues; counter++) {
-    contact_ptr = 0;
-    for (counter2 = 0; counter2 < numResidues; counter2++) {
-      x = h_alphaCarbonPosq[counter*3] - h_alphaCarbonPosq[counter2*3];
-      y = h_alphaCarbonPosq[counter*3 + 1] - h_alphaCarbonPosq[counter2*3 + 1];
-      z = h_alphaCarbonPosq[counter*3 + 2] - h_alphaCarbonPosq[counter2*3 + 2];
-      dist_sq = x*x + y*y + z*z;
-      if ( h_distanceRestContacts[numResidues * counter + contact_ptr] == counter2 ) { // then we've hit an edge
-        //cout << "Edge between node: " << counter << " and node: " << counter2 << "\n";
-        if (dist_sq > ecoCutoff*ecoCutoff && (counter != counter2 - 1 || counter != counter2 + 1)) { // so if the actual distance is greater than expected, then something's wrong
-          cout << "ERROR: contact map problem: counter: " << counter << " counter2: " << counter2 << " contact predicted to exist yet distance squared is: " << dist_sq << "\n";
-        }
-        contact_ptr++; // increment this pointer
-      } else { // no contact predicted
-        if (dist_sq < ecoCutoff*ecoCutoff && counter != counter2) { // so if the actual distance is less than cutoff, then something's wrong
-          cout << "ERROR: contact map problem: counter: " << counter << " counter2: " << counter2 << " contact predicted not to exist yet distance squared is: " << dist_sq << "\n";
-        }
-      }
-    }
-  }*/
-  
-  
-  // Now test Dijkstra's algorithm results
-  for (counter = 0; counter < numResidues; counter++) { // first, initialize the arrays
-    h_dijkstra_unexplored[counter] = true;
-    h_dijkstra_frontier[counter] = false;
-    h_dijkstra_distance[counter] = abs(counter - src);
-    h_dijkstra_n_explored[counter] = 0;
-    if (counter == src) {
-      h_dijkstra_unexplored[counter] = false;
-      h_dijkstra_frontier[counter] = true;
-      h_dijkstra_distance[counter] = 0;
-    }
-  }
-    
-  distanceRestEdgeCounts->download(h_distanceRestEdgeCounts);
-  
-  counter2 = 0;
-  num_explored = 1;
-  while ((counter2 <= MAX_ECO_DEPTH) && (num_explored < numResidues)) {
-    for (counter = 0; counter < numResidues; counter++) { // save the old arrays
-      h_dijkstra_unexplored_old[counter] = h_dijkstra_unexplored[counter];
-      h_dijkstra_frontier_old[counter] = h_dijkstra_frontier[counter];
-    }
-    
-    for (counter = 0; counter < numResidues; counter++) { // settle and update
-      h_dijkstra_n_explored[counter] = 0;
-      if (h_dijkstra_unexplored_old[counter] == true) {
-        for (contact_ptr = 0; contact_ptr < h_distanceRestEdgeCounts[counter]; contact_ptr++) {
-          edge_index = (numResidues * counter) + contact_ptr;
-          head = h_distanceRestContacts[edge_index];  // the index of the node that is leading to this one
-          //cout << "edge from node " << counter << " to " << head << "\n";
-          if (h_dijkstra_frontier_old[head] == true) { // if the head node is on the frontier, the we need to change our explored status
-            h_dijkstra_frontier[counter] = true; // then add myself to the frontier
-            h_dijkstra_unexplored[counter] = false; // remove myself from the unexplored
-            h_dijkstra_distance[counter] = counter2 + 1; // the number of iterations we've needed to find me is the distance
-            num_explored++;
-            break;
-          }
-        }
-      }
-    }
-    counter2++;
-  }
-  
-  // Now rerun the GPU pathfinding algorithm
-   void* dijkstra_initializeArgs[] = {
-  &dijkstra_unexplored->getDevicePointer(),
-  &dijkstra_frontier->getDevicePointer(),
-  &dijkstra_distance->getDevicePointer(),
-  &dijkstra_n_explored->getDevicePointer(),
-  &src,
-  &INF,
-  &numResidues};
-  
-    /*void* dijkstra_save_oldArgs[] = {
-  &dijkstra_unexplored->getDevicePointer(),
-  &dijkstra_unexplored_old->getDevicePointer(),
-  &dijkstra_frontier->getDevicePointer(),
-  &dijkstra_frontier_old->getDevicePointer(),
-  &numResidues};
-  */
-    void* dijkstra_settle_and_updateArgs[] = {
-  &dijkstra_unexplored->getDevicePointer(),
-  &dijkstra_unexplored_old->getDevicePointer(),
-  &dijkstra_frontier->getDevicePointer(),
-  &dijkstra_frontier_old->getDevicePointer(),
-  &dijkstra_distance->getDevicePointer(),
-  &distanceRestEdgeCounts->getDevicePointer(),
-  &distanceRestContacts->getDevicePointer(),
-  &dijkstra_n_explored->getDevicePointer(),
-  &counter2,
-  &numResidues};
-  
-    /*void* dijkstra_log_reduceArgs[] = {
-  &numResidues,
-  &dijkstra_n_explored->getDevicePointer(),
-  &dijkstra_total->getDevicePointer()};
-  */
-  cu.executeKernel(dijkstra_initializeKernel, dijkstra_initializeArgs, numResidues);
-  counter2 = 0;
-  num_explored = 1;
-  
-  while ((counter2 <= MAX_ECO_DEPTH) && (num_explored < numResidues)) {
-    cu.executeKernel(dijkstra_settle_and_updateKernel, dijkstra_settle_and_updateArgs, numResidues);
-    //num_explored += h_dijkstra_total[0];
-    counter2++;
-  }
-  
-  // by this point, the graphs should be explored
-  dijkstra_distance->download(h_dijkstra_distance2);
-  for (counter = 0; counter < numResidues; counter++) {
-    if (h_dijkstra_distance[counter] != h_dijkstra_distance2[counter] ) { // if these two distances are not equal, then one of the pathfinding algorithms is broken
-      cout << "ERROR: pathfinding algorithm discrepancy. Src: 0. Dest: " << counter << " (CPU): " << h_dijkstra_distance[counter] << " (GPU): " << h_dijkstra_distance2[counter] << "\n";
-    }
-  }
-  
-}
-
 double CudaCalcMeldForceKernel::execute(ContextImpl& context, bool includeForces, bool includeEnergy) {
     // compute the forces and energies
     /* // Time evaluation
@@ -1448,8 +1302,22 @@ double CudaCalcMeldForceKernel::execute(ContextImpl& context, bool includeForces
             &cartProfileRestGlobalIndices->getDevicePointer(),
             &restraintEnergies->getDevicePointer(),
             &cartProfileRestForces->getDevicePointer(),
+            &cartProfilePosBuffer->getDevicePointer(),
             &numCartProfileRestraints };
         cu.executeKernel(computeCartProfileRestKernel, cartProfileArgs, numCartProfileRestraints);
+        
+        
+        cartProfileRestForces->download(h_cartProfileRestForces);
+        restraintEnergies->download(h_restraintEnergies);
+        cartProfilePosBuffer->download(h_cartProfilePosBuffer);
+        
+        // TODO: evaluate the energies here and now with another function
+        
+        cout << "numCartProfileRestraints: " << numCartProfileRestraints << "\n";
+        for (counter=0; counter < numCartProfileRestraints; counter++) {
+            cout << "Atom x,y,z: " << h_cartProfilePosBuffer[counter].x << "," << h_cartProfilePosBuffer[counter].y << "," << h_cartProfilePosBuffer[counter].z << " Energy: " << h_restraintEnergies[h_cartProfileRestGlobalIndices[counter]] << "\n";
+        }
+        
     }
 
     // now evaluate and active restraints based on groups
@@ -1585,6 +1453,8 @@ double CudaCalcMeldForceKernel::execute(ContextImpl& context, bool includeForces
             &numCartProfileRestraints
         };
         cu.executeKernel(applyCartProfileRestKernel, applyCartProfileRestArgs, numCartProfileRestraints);
+        
+        
     }
     
     on_step++;

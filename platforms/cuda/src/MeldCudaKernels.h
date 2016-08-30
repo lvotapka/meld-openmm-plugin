@@ -160,8 +160,8 @@ private:
     OpenMM::CudaArray* alphaCarbons; // Indices of alpha carbons
     std::vector<int> h_alphaCarbons;
     
-    OpenMM::CudaArray* globalCartProfileRestCoeffs;  // the coefficients for the Cartesian restraints
-    std::vector<float> h_globalCartProfileRestCoeffs;
+    //OpenMM::CudaArray* globalCartProfileRestCoeffs;  // the coefficients for the Cartesian restraints
+    //std::vector<float> h_globalCartProfileRestCoeffs;
     
     //std::vector<int> eco_output_freq; // the frequency at which to output ECO info
     
@@ -311,6 +311,10 @@ private:
     std::vector<int> h_cartProfileRestGlobalIndices;
     
     OpenMM::CudaArray* cartProfileRestForces;       // float3 to hold the forces on the atom due to this restraint
+    std::vector<float3> h_cartProfileRestForces;
+    
+    OpenMM::CudaArray* cartProfilePosBuffer;
+    std::vector<float3> h_cartProfilePosBuffer; // a buffer of atom positions for easy debugging
     
     /**
      * Arrays for all restraints
