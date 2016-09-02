@@ -767,7 +767,11 @@ extern "C" __global__ void computeCartProfileRest(
                                         float3* __restrict__ force_buffer, float3* pos_buffer, const int numRestraints) {
 
 for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*gridDim.x) {
-
+            
+            assert(resolution[tx].x != 0);
+            assert(resolution[tx].y != 0);
+            assert(resolution[tx].z != 0);
+            
             float x = floor((posq[atom_indices[tx]].x - origin[tx].x)/resolution[tx].x);
             float y = floor((posq[atom_indices[tx]].y - origin[tx].y)/resolution[tx].y);
             float z = floor((posq[atom_indices[tx]].z - origin[tx].z)/resolution[tx].z);
@@ -809,10 +813,7 @@ for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*
               out_of_bounds = true;
             } 
             
-            // DEBUG
-            pos_buffer[tx].x = posq[atom_indices[tx]].x;
-            pos_buffer[tx].y = posq[atom_indices[tx]].y;
-            pos_buffer[tx].z = posq[atom_indices[tx]].z;
+            
 
             //int count_x = dims[tx].x/resolution[tx].x;
             //int count_y = dims[tx].y/resolution[tx].y; // should not be necessary
@@ -829,6 +830,11 @@ for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*
             float norm_dx = dx / resolution[tx].x;
             float norm_dy = dy / resolution[tx].y; // Does not need to be computed every time
             float norm_dz = dz / resolution[tx].z;
+            
+            // DEBUG
+            pos_buffer[tx].x = norm_dx;
+            pos_buffer[tx].y = norm_dy;
+            pos_buffer[tx].z = norm_dz;
             
             for (int pow_x = 0; pow_x < 4; pow_x++) {
                 for (int pow_y = 0; pow_y < 4; pow_y++) {
