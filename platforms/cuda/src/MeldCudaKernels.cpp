@@ -784,7 +784,7 @@ void CudaCalcMeldForceKernel::setupCartProfileRestraints(const MeldForce& force)
 
         h_cartProfileRestAtomIndices[i] = atom;
         h_cartProfileRestStartingCoeff[i] = startingCoeff;
-        cout << "h_cartProfileRestStartingCoeff[" << i << "] = " << h_cartProfileRestStartingCoeff[i] << "\n"; 
+        //cout << "h_cartProfileRestStartingCoeff[" << i << "] = " << h_cartProfileRestStartingCoeff[i] << "\n"; 
         h_cartProfileRestDims[i] = make_float3((float) dimx, (float) dimy, (float) dimz);
         h_cartProfileRestRes[i] = make_float3(resx, resy, resz);
         h_cartProfileRestOrigin[i] = make_float3(origx, origy, origz);
@@ -793,21 +793,21 @@ void CudaCalcMeldForceKernel::setupCartProfileRestraints(const MeldForce& force)
         
         
         
-        cout << "MeldCudaKernels Adding Cartesian Profile Restraint. atom " << atom << " startingCoeff:" << startingCoeff << " dim:" << dimx << ", "<< dimy << ", "<< dimz << "\n";
+        //cout << "MeldCudaKernels Adding Cartesian Profile Restraint. atom " << atom << " startingCoeff:" << startingCoeff << " dim:" << dimx << ", "<< dimy << ", "<< dimz << "\n";
         //cout << " res:" << resx << ", "<< resy << ", "<< resz << " orig:" << origx << ", " << origy << ", " << origz << "\n";
 
         //int thisEnd = currentParamIndex;
         //h_torsProileRestParamBounds[i] = make_int2(thisStart, thisEnd);
     }
     
-    
+    /*
     //cout << "MeldCudaKernels cartProfileRestCoeffs: ";
     for (int i=0; i < numCartProfileRestCoeffs; ++i) {
         h_cartProfileRestCoeffs[i] = force.getCartProfileRestCoeffs()[i];
         cout << h_cartProfileRestCoeffs[i] << " ";
         assert(isfinite(h_cartProfileRestCoeffs[i]));
     }
-    //cout << "\n";
+    //cout << "\n";*/
     
 }
 

@@ -794,11 +794,11 @@ for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*
             //int bin = x*count_x*count_z + y*count_z + z; // not necessary
             int bin = x*dims[tx].y*dims[tx].z + y*dims[tx].z + z;
 
-            float energy = 0;
+            float energy = 0.0;
             float3 force;
-            force.x = 0; 
-            force.y = 0; 
-            force.z = 0;
+            force.x = 0.0; 
+            force.y = 0.0; 
+            force.z = 0.0;
             float norm_dx = dx / resolution[tx].x;
             float norm_dy = dy / resolution[tx].y; // Does not need to be computed every time
             float norm_dz = dz / resolution[tx].z;
@@ -812,26 +812,50 @@ for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*
             assert(isfinite(norm_dy));
             assert(isfinite(norm_dz));
             
-            for (int pow_x = 0; pow_x < 4; pow_x++) {
-                for (int pow_y = 0; pow_y < 4; pow_y++) {
-                    for (int pow_z = 0; pow_z < 4; pow_z++) {
-                        int a_index = pow_x + 4*pow_y + 16*pow_z;
+            /*
+            int ijkn = starting_coeffs[tx] + 64*bin;
+            float pow_z = 1.0;
+            float pow_y = 1.0;
+            int k1;
+            int j1;
+            for (k1 = 0; k1 < 4; k1++) {
+              pow_y = 1.0;
+              for (j1 = 0; j1 < 4; j1++) {
+                energy += pow_y*pow_z*(coeff[ijkn] + norm_dx*(coeff[ijkn+1] + norm_dx*(coeff[ijkn+2] + norm_dx*coeff[ijkn+3])));
+                ijkn += 4;
+                pow_y *= norm_dy;
+              }
+              pow_z *= norm_dz;
+            }
+            */
+            
+            int i, j, k;
+            float pow_x = 0.0;
+            float pow_y = 0.0;
+            float pow_z = 0.0;
+            for (int i = 0; i < 4; i++) {
+                for (int j = 0; j < 4; j++) {
+                    for (int k = 0; k < 4; k++) {
+                        int a_index = i + 4*j + 16*k;
                         
                         float coefficient = coeffs[starting_coeffs[tx] + 64*bin + a_index];
                         assert(isfinite(coefficient));
-                        energy = energy + coefficient*pow(norm_dx, (float) pow_x)*pow(norm_dy, (float) pow_y)*pow(norm_dz, (float) pow_z);
-                        if (pow_x > 0) {
+                        
+                        energy = energy + coefficient * pow(norm_dx, i) * pow(norm_dy, j) * pow(norm_dz, k);
+                        if (i > 0) {
                             force.x = force.x - coefficient *
-                                               pow_x*pow(norm_dx, (float) (pow_x-1) )*pow(norm_dy, (float) pow_y)*pow(norm_dz, (float) pow_z); }
-                        if (pow_y > 0) {
+                                               pow_x * pow(norm_dx, (i-1) ) * pow(norm_dy, j) * pow(norm_dz, k); }
+                        if (j > 0) {
                             force.y = force.y - coefficient *
-                                               pow(norm_dx, (float) pow_x)*pow_y*pow(norm_dy, (float) (pow_y-1) )*pow(norm_dz, (float) pow_z); } // ALERT: this might be a problem for detailed balance if out of grid boundary
-                        if (pow_z > 0) {
+                                               pow_y * pow(norm_dx, i) * pow(norm_dy, (j-1) ) * pow(norm_dz, k); } // ALERT: this might be a problem for detailed balance if out of grid boundary
+                        if (k > 0) {
                             force.z = force.z - coefficient *
-                                               pow(norm_dx, (float) pow_x)*pow(norm_dy, (float) pow_y)*pow_z*pow(norm_dz, (float) (pow_z-1) ); }
-
+                                               pow_z * pow(norm_dx, i) * pow(norm_dy, j) * pow(norm_dz, (k-1) ); }
+                        pow_z++;
                     }
+                    pow_y++;
                 }
+                pow_x++;
             }
             
             /*
