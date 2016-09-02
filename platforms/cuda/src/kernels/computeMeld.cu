@@ -734,30 +734,6 @@ extern "C" __global__ void computeTorsProfileRest(
     }
 }
 
-/* // This was Lane's old kernel DELETE
-extern "C" __global__ void computeCartProfileRest(
-                            const real4* __restrict__ posq,             // positions and charges
-                            const int* __restrict__ atomIndex,         // i for Cartesian rest.
-                            const float* __restrict__ coeffs,          // all the coefficients for all Cartesian restraints
-                            const int* __restrict__ startingCoeff,     // the index of the first coefficient for this restraint
-                            const int3* __restrict__ dim,              // dimensions of the grid
-                            const float3* __restrict__ res,              // resolution of the grid
-                            const float3* __restrict__ orig,              // origin of the grid
-                            const float* __restrict__ scaleFactor,      // scale factor for energies and forces
-                            const int* __restrict__ indexToGlobal,      // index of this restraint in the global array
-                            float* __restrict__ restraintEnergies,      // global energy of each restraint
-                            float3* __restrict__ forceBuffer,        // cache the forces for application later
-                            const int numRestraints ) {
-    for (int index=blockIdx.x*blockDim.x+threadIdx.x; index<numRestraints; index+=gridDim.x*blockDim.x) {
-        // get my global index
-        int globalIndex = indexToGlobal[index];
-        forceBuffer[index].x = 0.0; forceBuffer[index+1].y = 0.0; forceBuffer[index+2].z = 0.0; 
-        restraintEnergies[globalIndex] = 0.0; // keep it at zero until Daniel gives the code to me
-    }
-}
-*/
-
-
 extern "C" __global__ void computeCartProfileRest(
                                         const real4* __restrict__ posq, const int* atom_indices,
                                         const float* coeffs, const int* starting_coeffs,
@@ -767,10 +743,6 @@ extern "C" __global__ void computeCartProfileRest(
                                         float3* __restrict__ force_buffer, float3* pos_buffer, const int numRestraints) {
 
 for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*gridDim.x) {
-            
-            //assert(resolution[tx].x != 0);
-            //assert(resolution[tx].y != 0);
-            //assert(resolution[tx].z != 0);
             
             float x = floor((posq[atom_indices[tx]].x - origin[tx].x)/resolution[tx].x);
             float y = floor((posq[atom_indices[tx]].y - origin[tx].y)/resolution[tx].y);
@@ -836,12 +808,17 @@ for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*
             pos_buffer[tx].y = norm_dy;
             pos_buffer[tx].z = norm_dz;
             
+            assert(isfinite(norm_dx));
+            assert(isfinite(norm_dy));
+            assert(isfinite(norm_dz));
+            
             for (int pow_x = 0; pow_x < 4; pow_x++) {
                 for (int pow_y = 0; pow_y < 4; pow_y++) {
                     for (int pow_z = 0; pow_z < 4; pow_z++) {
                         int a_index = pow_x + 4*pow_y + 16*pow_z;
                         
                         float coefficient = coeffs[starting_coeffs[tx] + 64*bin + a_index];
+                        assert(isfinite(coefficient));
                         energy = energy + coefficient*pow(norm_dx, (float) pow_x)*pow(norm_dy, (float) pow_y)*pow(norm_dz, (float) pow_z);
                         if (pow_x > 0) {
                             force.x = force.x - coefficient *
