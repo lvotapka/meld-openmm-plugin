@@ -790,7 +790,19 @@ void CudaCalcMeldForceKernel::setupCartProfileRestraints(const MeldForce& force)
         h_cartProfileRestGlobalIndices[i] = globalIndex;
         h_cartProfileRestScaleFactor[i] = scaleFactor;
         
-        cout << "MeldCudaKernels Adding Cartesian Profile Restraint. atom " << atom << " startingCoeff:" << startingCoeff << " res:" << resx << ", "<< resy << ", "<< resz << "\n";
+        
+        if (resx == 0) {
+          cout << "ALERT: resx == 0!!!!";
+          cout << "MeldCudaKernels Adding Cartesian Profile Restraint. atom " << atom << " startingCoeff:" << startingCoeff << " res:" << resx << ", "<< resy << ", "<< resz << "\n";
+        }
+        if (resy == 0) {
+          cout << "ALERT: resy == 0!!!!";
+          cout << "MeldCudaKernels Adding Cartesian Profile Restraint. atom " << atom << " startingCoeff:" << startingCoeff << " res:" << resx << ", "<< resy << ", "<< resz << "\n";
+        }
+        if (resz == 0) {
+          cout << "ALERT: resz == 0!!!!";
+          cout << "MeldCudaKernels Adding Cartesian Profile Restraint. atom " << atom << " startingCoeff:" << startingCoeff << " res:" << resx << ", "<< resy << ", "<< resz << "\n";
+        }
         //cout << " res:" << resx << ", "<< resy << ", "<< resz << " orig:" << origx << ", " << origy << ", " << origz << "\n";
 
         //int thisEnd = currentParamIndex;

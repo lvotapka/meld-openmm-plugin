@@ -768,9 +768,9 @@ extern "C" __global__ void computeCartProfileRest(
 
 for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*gridDim.x) {
             
-            assert(resolution[tx].x != 0);
-            assert(resolution[tx].y != 0);
-            assert(resolution[tx].z != 0);
+            //assert(resolution[tx].x != 0);
+            //assert(resolution[tx].y != 0);
+            //assert(resolution[tx].z != 0);
             
             float x = floor((posq[atom_indices[tx]].x - origin[tx].x)/resolution[tx].x);
             float y = floor((posq[atom_indices[tx]].y - origin[tx].y)/resolution[tx].y);
