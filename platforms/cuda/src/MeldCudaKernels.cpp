@@ -793,17 +793,19 @@ void CudaCalcMeldForceKernel::setupCartProfileRestraints(const MeldForce& force)
         
         
         
-        //cout << "MeldCudaKernels Adding Cartesian Profile Restraint. atom " << atom << " startingCoeff:" << startingCoeff << " dim:" << dimx << ", "<< dimy << ", "<< dimz << "\n";
+        //cout << "MeldCudaKernels Adding Cartesian Profile Restraint. atom " << atom << " startingCoeff:" << startingCoeff << " res:" << resx << ", "<< resy << ", "<< resz << "\n";
         //cout << " res:" << resx << ", "<< resy << ", "<< resz << " orig:" << origx << ", " << origy << ", " << origz << "\n";
 
         //int thisEnd = currentParamIndex;
         //h_torsProileRestParamBounds[i] = make_int2(thisStart, thisEnd);
     }
+    for (int i=0; i < numCartProfileRestCoeffs; ++i) { // ALERT!!! DON'T COMMENT OUT THIS LOOP
+        h_cartProfileRestCoeffs[i] = force.getCartProfileRestCoeffs()[i];
+    }
     
     /*
     //cout << "MeldCudaKernels cartProfileRestCoeffs: ";
     for (int i=0; i < numCartProfileRestCoeffs; ++i) {
-        h_cartProfileRestCoeffs[i] = force.getCartProfileRestCoeffs()[i];
         cout << h_cartProfileRestCoeffs[i] << " ";
         assert(isfinite(h_cartProfileRestCoeffs[i]));
     }

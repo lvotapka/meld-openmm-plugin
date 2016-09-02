@@ -769,30 +769,23 @@ for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*
               dz = 0;
               out_of_bounds = true;
             }
-            if (x > dims[tx].x) {
-              x = dims[tx].x;
+            if (x > dims[tx].x-1) {
+              x = dims[tx].x-1;
               dx = resolution[tx].x;
               out_of_bounds = true;
             } 
-            if (y > dims[tx].y) {
-              y = dims[tx].y;
+            if (y > dims[tx].y-1) {
+              y = dims[tx].y-1;
               dy = resolution[tx].y;
               out_of_bounds = true;
             } 
-            if (z > dims[tx].z) {
-              z = dims[tx].z;
+            if (z > dims[tx].z-1) {
+              z = dims[tx].z-1;
               dz = resolution[tx].z;
               out_of_bounds = true;
             } 
             
-            
-
-            //int count_x = dims[tx].x/resolution[tx].x;
-            //int count_y = dims[tx].y/resolution[tx].y; // should not be necessary
-            //int count_z = dims[tx].z/resolution[tx].z;
-
-            //int bin = x*count_x*count_z + y*count_z + z; // not necessary
-            int bin = x*dims[tx].y*dims[tx].z + y*dims[tx].z + z;
+            int bin = (int) (x*dims[tx].y*dims[tx].z + y*dims[tx].z + z);
 
             float energy = 0.0;
             float3 force;
@@ -804,38 +797,24 @@ for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*
             float norm_dz = dz / resolution[tx].z;
             
             // DEBUG
-            pos_buffer[tx].x = norm_dx;
-            pos_buffer[tx].y = norm_dy;
-            pos_buffer[tx].z = norm_dz;
+            //pos_buffer[tx].x = posq[atom_indices[tx]].x;
+            //pos_buffer[tx].y = posq[atom_indices[tx]].y;
+            //pos_buffer[tx].z = posq[atom_indices[tx]].z;
             
             assert(isfinite(norm_dx));
             assert(isfinite(norm_dy));
             assert(isfinite(norm_dz));
             
-            /*
-            int ijkn = starting_coeffs[tx] + 64*bin;
-            float pow_z = 1.0;
-            float pow_y = 1.0;
-            int k1;
-            int j1;
-            for (k1 = 0; k1 < 4; k1++) {
-              pow_y = 1.0;
-              for (j1 = 0; j1 < 4; j1++) {
-                energy += pow_y*pow_z*(coeff[ijkn] + norm_dx*(coeff[ijkn+1] + norm_dx*(coeff[ijkn+2] + norm_dx*coeff[ijkn+3])));
-                ijkn += 4;
-                pow_y *= norm_dy;
-              }
-              pow_z *= norm_dz;
-            }
-            */
-            
             int i, j, k;
             float pow_x = 0.0;
             float pow_y = 0.0;
             float pow_z = 0.0;
-            for (int i = 0; i < 4; i++) {
-                for (int j = 0; j < 4; j++) {
-                    for (int k = 0; k < 4; k++) {
+            
+            for (i = 0; i < 4; i++) {
+                pow_y = 0.0;
+                for (j = 0; j < 4; j++) {
+                    pow_z = 0.0;
+                    for (k = 0; k < 4; k++) {
                         int a_index = i + 4*j + 16*k;
                         
                         float coefficient = coeffs[starting_coeffs[tx] + 64*bin + a_index];
@@ -844,19 +823,23 @@ for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*
                         energy = energy + coefficient * pow(norm_dx, i) * pow(norm_dy, j) * pow(norm_dz, k);
                         if (i > 0) {
                             force.x = force.x - coefficient *
-                                               pow_x * pow(norm_dx, (i-1) ) * pow(norm_dy, j) * pow(norm_dz, k); }
+                                               pow_x * powf(norm_dx, (i-1) ) * powf(norm_dy, j) * powf(norm_dz, k); }
                         if (j > 0) {
                             force.y = force.y - coefficient *
-                                               pow_y * pow(norm_dx, i) * pow(norm_dy, (j-1) ) * pow(norm_dz, k); } // ALERT: this might be a problem for detailed balance if out of grid boundary
+                                               pow_y * powf(norm_dx, i) * powf(norm_dy, (j-1) ) * powf(norm_dz, k); } // ALERT: this might be a problem for detailed balance if out of grid boundary
                         if (k > 0) {
                             force.z = force.z - coefficient *
-                                               pow_z * pow(norm_dx, i) * pow(norm_dy, j) * pow(norm_dz, (k-1) ); }
-                        pow_z++;
+                                               pow_z * powf(norm_dx, i) * powf(norm_dy, j) * powf(norm_dz, (k-1) ); }
+                        pow_z = pow_z + 1.0;
                     }
-                    pow_y++;
+                    pow_y = pow_y + 1.0;
                 }
-                pow_x++;
+                pow_x = pow_x + 1.0;
             }
+            
+            pos_buffer[tx].x = x;
+            pos_buffer[tx].y = y;
+            pos_buffer[tx].z = z;
             
             /*
             if (out_of_bounds == true) { // If we go out of bounds, then just set the force to zero.
