@@ -748,10 +748,14 @@ for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*
             float y = floor((posq[atom_indices[tx]].y - origin[tx].y)/resolution[tx].y);
             float z = floor((posq[atom_indices[tx]].z - origin[tx].z)/resolution[tx].z);
             
+            //assert(isfinite(resolution[tx].x));
+            //assert(isfinite(origin[tx].x));
+            //assert(isfinite(posq[atom_indices[tx]].x));
+            
             float dx = posq[atom_indices[tx]].x - (origin[tx].x + x*resolution[tx].x);
             float dy = posq[atom_indices[tx]].y - (origin[tx].y + y*resolution[tx].y); // the position of the atom in relation to the corner of this bin
             float dz = posq[atom_indices[tx]].z - (origin[tx].z + z*resolution[tx].z);
-            
+            assert(isfinite(dx));
             bool out_of_bounds = false;
             
             if (x < 0) { // make sure that we fall within the boundaries of the grid
@@ -792,14 +796,16 @@ for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*
             force.x = 0.0; 
             force.y = 0.0; 
             force.z = 0.0;
+            
+            assert(isfinite(resolution[tx].x));
             float norm_dx = dx / resolution[tx].x;
             float norm_dy = dy / resolution[tx].y; // Does not need to be computed every time
             float norm_dz = dz / resolution[tx].z;
             
             // DEBUG
-            //pos_buffer[tx].x = posq[atom_indices[tx]].x;
-            //pos_buffer[tx].y = posq[atom_indices[tx]].y;
-            //pos_buffer[tx].z = posq[atom_indices[tx]].z;
+            pos_buffer[tx].x = posq[atom_indices[tx]].x;
+            pos_buffer[tx].y = posq[atom_indices[tx]].y;
+            pos_buffer[tx].z = posq[atom_indices[tx]].z;
             
             assert(isfinite(norm_dx));
             assert(isfinite(norm_dy));
@@ -823,23 +829,19 @@ for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*
                         energy = energy + coefficient * pow(norm_dx, i) * pow(norm_dy, j) * pow(norm_dz, k);
                         if (i > 0) {
                             force.x = force.x - coefficient *
-                                               pow_x * powf(norm_dx, (i-1) ) * powf(norm_dy, j) * powf(norm_dz, k); }
+                                               pow_x * pow(norm_dx, (i-1) ) * pow(norm_dy, j) * pow(norm_dz, k); }
                         if (j > 0) {
                             force.y = force.y - coefficient *
-                                               pow_y * powf(norm_dx, i) * powf(norm_dy, (j-1) ) * powf(norm_dz, k); } // ALERT: this might be a problem for detailed balance if out of grid boundary
+                                               pow_y * pow(norm_dx, i) * pow(norm_dy, (j-1) ) * pow(norm_dz, k); } // ALERT: this might be a problem for detailed balance if out of grid boundary
                         if (k > 0) {
                             force.z = force.z - coefficient *
-                                               pow_z * powf(norm_dx, i) * powf(norm_dy, j) * powf(norm_dz, (k-1) ); }
+                                               pow_z * pow(norm_dx, i) * pow(norm_dy, j) * pow(norm_dz, (k-1) ); }
                         pow_z = pow_z + 1.0;
                     }
                     pow_y = pow_y + 1.0;
                 }
                 pow_x = pow_x + 1.0;
             }
-            
-            pos_buffer[tx].x = x;
-            pos_buffer[tx].y = y;
-            pos_buffer[tx].z = z;
             
             /*
             if (out_of_bounds == true) { // If we go out of bounds, then just set the force to zero.
@@ -855,9 +857,9 @@ for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*
             assert(isfinite(force.z));
                  
             energies[global_indices[tx]] = energy * scale_factor[tx];
-            force_buffer[tx].x = force.x * scale_factor[tx];
-            force_buffer[tx].y = force.y * scale_factor[tx];
-            force_buffer[tx].z = force.z * scale_factor[tx];
+            force_buffer[tx].x = force.x * scale_factor[tx] / resolution[tx].x;
+            force_buffer[tx].y = force.y * scale_factor[tx] / resolution[tx].y; // because the slope was found in relation to norm_dx, we need to convert back to z
+            force_buffer[tx].z = force.z * scale_factor[tx] / resolution[tx].x;
 }
 }
 
@@ -879,7 +881,7 @@ extern "C" __global__ void evaluateAndActivate(
     // within each group are implicity synchronized at the hardware
     // level.
 
-    // These are runtime parameters set tby the C++ code.
+    // These are runtime parameters set by the C++ code.
     const int groupsPerBlock = GROUPSPERBLOCK;
     const int maxGroupSize = MAXGROUPSIZE;
 
