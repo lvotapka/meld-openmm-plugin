@@ -242,8 +242,6 @@ void CudaCalcMeldForceKernel::allocateMemory(const MeldForce& force) {
     numTorsProfileRestraints = force.getNumTorsProfileRestraints();
     numTorsProfileRestParams = force.getNumTorsProfileRestParams();
     numCartProfileRestraints = force.getNumCartProfileRestraints();
-    //numCartProfileRestParams = force.getNumCartProfileRestParams();  
-    //cout << "numCartProfileRestParams:" <<   numCartProfileRestParams << "\n";
     
     numRestraints = force.getNumTotalRestraints();
     numGroups = force.getNumGroups();
@@ -252,6 +250,7 @@ void CudaCalcMeldForceKernel::allocateMemory(const MeldForce& force) {
     numResidues = force.getNumResidues();
     numCartProfileRestCoeffs = force.getNumCartProfileRestCoeffs();
     cout << "numCartProfileRestCoeffs: " << numCartProfileRestCoeffs << "\n";
+    cout << "numCartProfileRestraints: " << numCartProfileRestraints << "\n";
     eco_output_freq = force.getEcoOutputFreq();
     print_avg_eco = force.getPrintAvgEco();
     print_eco_value_array = force.getPrintEcoValueArray();
@@ -793,8 +792,8 @@ void CudaCalcMeldForceKernel::setupCartProfileRestraints(const MeldForce& force)
         
         
         
-        cout << "MeldCudaKernels Adding Cartesian Profile Restraint. atom " << atom << " startingCoeff:" << startingCoeff << " dim:" << dimx << ", "<< dimy << ", "<< dimz << "\n";
-        cout << " res:" << resx << ", "<< resy << ", "<< resz << " orig:" << origx << ", " << origy << ", " << origz << "\n";
+        //cout << "MeldCudaKernels Adding Cartesian Profile Restraint. atom " << atom << " startingCoeff:" << startingCoeff << " dim:" << dimx << ", "<< dimy << ", "<< dimz << "\n";
+        //cout << " res:" << resx << ", "<< resy << ", "<< resz << " orig:" << origx << ", " << origy << ", " << origz << "\n";
 
         //int thisEnd = currentParamIndex;
         //h_torsProileRestParamBounds[i] = make_int2(thisStart, thisEnd);
@@ -1159,7 +1158,13 @@ void CudaCalcMeldForceKernel::calcEcoValues() {
   timediff = (long int)(endtime.tv_usec) - starttime;
   cout << "Time to do Dijkstra for all restraints: " << timediff << "\n"; */
 }
-
+/*
+void CudaCalcMeldForceKernel::eval_cart_profile(float3 pos) {
+  float x = floor((pos.x - origin[tx].x)/resolution[tx].x);
+  float y = floor((pos.y - origin[tx].y)/resolution[tx].y);
+  float z = floor((pos.z - origin[tx].z)/resolution[tx].z);
+}
+*/
 double CudaCalcMeldForceKernel::execute(ContextImpl& context, bool includeForces, bool includeEnergy) {
     // compute the forces and energies
     /* // Time evaluation
@@ -1226,6 +1231,11 @@ double CudaCalcMeldForceKernel::execute(ContextImpl& context, bool includeForces
       fout.close(); // close file
       assert(!fout.fail()); 
     }
+    
+    //distanceRestForces->download(h_distanceRestForces);
+    //for (counter=0; counter < numCartProfileRestraints; counter++) {
+    //    cout << "Distance force example: " << h_distanceRestForces[counter].x << "," << h_distanceRestForces[counter].y << "," << h_distanceRestForces[counter].z << "\n"; //
+    //}
     
     /*
     distanceRestEcoValues->download(h_distanceRestEcoValues);
@@ -1314,7 +1324,7 @@ double CudaCalcMeldForceKernel::execute(ContextImpl& context, bool includeForces
         cu.executeKernel(computeCartProfileRestKernel, cartProfileArgs, numCartProfileRestraints);
         
         //cout << "numCartProfileRestraints: " << numCartProfileRestraints << "\n";
-        /*
+        
         cartProfileRestForces->download(h_cartProfileRestForces);
         restraintEnergies->download(h_restraintEnergies);
         cartProfilePosBuffer->download(h_cartProfilePosBuffer);
@@ -1323,9 +1333,9 @@ double CudaCalcMeldForceKernel::execute(ContextImpl& context, bool includeForces
         
         
         for (counter=0; counter < numCartProfileRestraints; counter++) {
-            cout << "Atom x,y,z: " << h_cartProfilePosBuffer[counter].x << "," << h_cartProfilePosBuffer[counter].y << "," << h_cartProfilePosBuffer[counter].z << " energy: " << h_restraintEnergies[h_cartProfileRestGlobalIndices[counter]] << " force z:" << h_cartProfileRestForces[counter].z << "\n"; //
+            cout << "Atom x,y,z: " << h_cartProfilePosBuffer[counter].x << "," << h_cartProfilePosBuffer[counter].y << "," << h_cartProfilePosBuffer[counter].z << " energy: " << h_restraintEnergies[h_cartProfileRestGlobalIndices[counter]] << " force x:" << h_cartProfileRestForces[counter].x << "\n"; //
         }
-        */
+        
         
     }
 

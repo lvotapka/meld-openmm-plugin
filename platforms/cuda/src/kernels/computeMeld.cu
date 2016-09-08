@@ -748,14 +748,20 @@ for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*
             float y = floor((posq[atom_indices[tx]].y - origin[tx].y)/resolution[tx].y);
             float z = floor((posq[atom_indices[tx]].z - origin[tx].z)/resolution[tx].z);
             
-            //assert(isfinite(resolution[tx].x));
-            //assert(isfinite(origin[tx].x));
-            //assert(isfinite(posq[atom_indices[tx]].x));
+            assert(isfinite(resolution[tx].x));
+            assert(isfinite(resolution[tx].y));
+            assert(isfinite(resolution[tx].z));
+            assert(isfinite(origin[tx].x));
+            assert(isfinite(origin[tx].y));
+            assert(isfinite(origin[tx].z));
+            assert(isfinite(posq[atom_indices[tx]].x));
+            assert(isfinite(posq[atom_indices[tx]].y));
+            assert(isfinite(posq[atom_indices[tx]].z));
             
             float dx = posq[atom_indices[tx]].x - (origin[tx].x + x*resolution[tx].x);
             float dy = posq[atom_indices[tx]].y - (origin[tx].y + y*resolution[tx].y); // the position of the atom in relation to the corner of this bin
             float dz = posq[atom_indices[tx]].z - (origin[tx].z + z*resolution[tx].z);
-            assert(isfinite(dx));
+            
             bool out_of_bounds = false;
             
             if (x < 0) { // make sure that we fall within the boundaries of the grid
@@ -773,18 +779,18 @@ for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*
               dz = 0;
               out_of_bounds = true;
             }
-            if (x > dims[tx].x-1) {
-              x = dims[tx].x-1;
+            if (x >= dims[tx].x) {
+              x = dims[tx].x-1.0;
               dx = resolution[tx].x;
               out_of_bounds = true;
             } 
-            if (y > dims[tx].y-1) {
-              y = dims[tx].y-1;
+            if (y >= dims[tx].y) {
+              y = dims[tx].y-1.0;
               dy = resolution[tx].y;
               out_of_bounds = true;
             } 
-            if (z > dims[tx].z-1) {
-              z = dims[tx].z-1;
+            if (z >= dims[tx].z) {
+              z = dims[tx].z-1.0;
               dz = resolution[tx].z;
               out_of_bounds = true;
             } 
@@ -803,9 +809,9 @@ for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*
             float norm_dz = dz / resolution[tx].z;
             
             // DEBUG
-            pos_buffer[tx].x = posq[atom_indices[tx]].x;
-            pos_buffer[tx].y = posq[atom_indices[tx]].y;
-            pos_buffer[tx].z = posq[atom_indices[tx]].z;
+            pos_buffer[tx].x = x;
+            pos_buffer[tx].y = y;
+            pos_buffer[tx].z = z;
             
             assert(isfinite(norm_dx));
             assert(isfinite(norm_dy));
@@ -848,8 +854,8 @@ for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*
                 force.x = 0; 
                 force.y = 0; 
                 force.z = 0;
-            }
-            */
+            }*/
+            
             
             assert(isfinite(energy));
             assert(isfinite(force.x));
@@ -859,7 +865,7 @@ for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*
             energies[global_indices[tx]] = energy * scale_factor[tx];
             force_buffer[tx].x = force.x * scale_factor[tx] / resolution[tx].x;
             force_buffer[tx].y = force.y * scale_factor[tx] / resolution[tx].y; // because the slope was found in relation to norm_dx, we need to convert back to z
-            force_buffer[tx].z = force.z * scale_factor[tx] / resolution[tx].x;
+            force_buffer[tx].z = force.z * scale_factor[tx] / resolution[tx].z;
 }
 }
 
