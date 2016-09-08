@@ -1324,7 +1324,7 @@ double CudaCalcMeldForceKernel::execute(ContextImpl& context, bool includeForces
         cu.executeKernel(computeCartProfileRestKernel, cartProfileArgs, numCartProfileRestraints);
         
         //cout << "numCartProfileRestraints: " << numCartProfileRestraints << "\n";
-        
+        /*
         cartProfileRestForces->download(h_cartProfileRestForces);
         restraintEnergies->download(h_restraintEnergies);
         cartProfilePosBuffer->download(h_cartProfilePosBuffer);
@@ -1335,7 +1335,7 @@ double CudaCalcMeldForceKernel::execute(ContextImpl& context, bool includeForces
         for (counter=0; counter < numCartProfileRestraints; counter++) {
             cout << "Atom x,y,z: " << h_cartProfilePosBuffer[counter].x << "," << h_cartProfilePosBuffer[counter].y << "," << h_cartProfilePosBuffer[counter].z << " energy: " << h_restraintEnergies[h_cartProfileRestGlobalIndices[counter]] << " force x:" << h_cartProfileRestForces[counter].x << "\n"; //
         }
-        
+        */
         
     }
 
