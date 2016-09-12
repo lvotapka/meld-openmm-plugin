@@ -246,6 +246,7 @@ void CudaCalcMeldForceKernel::allocateMemory(const MeldForce& force) {
     numRestraints = force.getNumTotalRestraints();
     numGroups = force.getNumGroups();
     numCollections = force.getNumCollections();
+    cout << "numCollections: " << numCollections << "\n"; 
     ecoCutoff = force.getEcoCutoff();
     numResidues = force.getNumResidues();
     numCartProfileRestCoeffs = force.getNumCartProfileRestCoeffs();
@@ -438,6 +439,7 @@ h_dijkstra_n_explored_old                 = std::vector<int>    (numResidues, 0)
     h_collectionBounds                    = std::vector<int2>   (numCollections, make_int2( -1, -1));
     h_collectionNumActive                 = std::vector<int>    (numCollections, -1);
     h_collectionEncounteredNaN            = std::vector<int>    (1, 0);
+    h_groupEnergies                       = std::vector<float>  (numGroups, 0);
 }
 
 
@@ -767,6 +769,9 @@ void CudaCalcMeldForceKernel::setupCartProfileRestraints(const MeldForce& force)
     std::string restType = "Cartesian profile restraint";
     int currentParamIndex = 0;
     
+    for (int i=0; i < numCartProfileRestCoeffs; ++i) { // ALERT!!! DON'T COMMENT OUT THIS LOOP
+        h_cartProfileRestCoeffs[i] = force.getCartProfileRestCoeffs()[i];
+    }
     
     for (int i=0; i < numCartProfileRestraints; ++i) {
         int thisStart = currentParamIndex;
@@ -791,15 +796,24 @@ void CudaCalcMeldForceKernel::setupCartProfileRestraints(const MeldForce& force)
         h_cartProfileRestScaleFactor[i] = scaleFactor;
         
         
-        
-        //cout << "MeldCudaKernels Adding Cartesian Profile Restraint. atom " << atom << " startingCoeff:" << startingCoeff << " dim:" << dimx << ", "<< dimy << ", "<< dimz << "\n";
+        /*
+        cout << "MeldCudaKernels Adding Cartesian Profile Restraint. atom " << atom << " startingCoeff:" << startingCoeff << " dim:" << dimx << ", "<< dimy << ", "<< dimz << "\n";
         //cout << " res:" << resx << ", "<< resy << ", "<< resz << " orig:" << origx << ", " << origy << ", " << origz << "\n";
-
+        int j;
+        float z=-10.0;
+        float energy;
+        cout << "force z for restraint " << i << " atom index:" << atom << ":";
+        for (j=0; j<100; j++) {
+          z += 0.2;
+          h_cartProfilePosBuffer[i].x = 9.;
+          h_cartProfilePosBuffer[i].y = 9.;
+          h_cartProfilePosBuffer[i].z = z;
+          energy = eval_cart_profile(i);
+          cout << energy << ", ";
+        }
+        cout << "\n";*/
         //int thisEnd = currentParamIndex;
         //h_torsProileRestParamBounds[i] = make_int2(thisStart, thisEnd);
-    }
-    for (int i=0; i < numCartProfileRestCoeffs; ++i) { // ALERT!!! DON'T COMMENT OUT THIS LOOP
-        h_cartProfileRestCoeffs[i] = force.getCartProfileRestCoeffs()[i];
     }
     
     /*
@@ -952,6 +966,10 @@ void CudaCalcMeldForceKernel::validateAndUpload() {
     groupRestraintIndices->upload(h_groupRestraintIndices);
     groupBounds->upload(h_groupBounds);
     groupNumActive->upload(h_groupNumActive);
+    /*for (counter = 0; counter < numGroups; counter++) {
+      cout << "h_groupNumActive[" << counter << "]: " << h_groupNumActive[counter] << "\n";
+    }*/
+    
     collectionGroupIndices->upload(h_collectionGroupIndices);
     collectionBounds->upload(h_collectionBounds);
     collectionNumActive->upload(h_collectionNumActive);
@@ -1158,13 +1176,114 @@ void CudaCalcMeldForceKernel::calcEcoValues() {
   timediff = (long int)(endtime.tv_usec) - starttime;
   cout << "Time to do Dijkstra for all restraints: " << timediff << "\n"; */
 }
-/*
-void CudaCalcMeldForceKernel::eval_cart_profile(float3 pos) {
-  float x = floor((pos.x - origin[tx].x)/resolution[tx].x);
-  float y = floor((pos.y - origin[tx].y)/resolution[tx].y);
-  float z = floor((pos.z - origin[tx].z)/resolution[tx].z);
+
+float CudaCalcMeldForceKernel::eval_cart_profile(int counter) { //, float* energy_buffer, float3* force_buffer) {
+  float3 pos;
+  float3 dims;
+  float3 resolution;
+  float3 origin;
+  
+  pos.x = h_cartProfilePosBuffer[counter].x;
+  pos.y = h_cartProfilePosBuffer[counter].y;
+  pos.z = h_cartProfilePosBuffer[counter].z;
+  
+  dims.x = h_cartProfileRestDims[counter].x;
+  dims.y = h_cartProfileRestDims[counter].y;
+  dims.z = h_cartProfileRestDims[counter].z;
+  
+  origin.x = h_cartProfileRestOrigin[counter].x;
+  origin.y = h_cartProfileRestOrigin[counter].y;
+  origin.z = h_cartProfileRestOrigin[counter].z;
+  
+  resolution.x = h_cartProfileRestRes[counter].x;
+  resolution.y = h_cartProfileRestRes[counter].y;
+  resolution.z = h_cartProfileRestRes[counter].z;
+
+  float x = floor((pos.x - origin.x)/resolution.x);
+  float y = floor((pos.y - origin.y)/resolution.y);
+  float z = floor((pos.z - origin.z)/resolution.z);
+  float dx = pos.x - (origin.x + x*resolution.x);
+  float dy = pos.y - (origin.y + y*resolution.y); // the position of the atom in relation to the corner of this bin
+  float dz = pos.z - (origin.z + z*resolution.z);
+  bool out_of_bounds = false;   
+  if (x < 0) { // make sure that we fall within the boundaries of the grid
+    x = 0;
+    dx = 0;
+    out_of_bounds = true;
+  } 
+  if (y < 0) {
+    y = 0;
+    dy = 0;
+    out_of_bounds = true;
+  } 
+  if (z < 0) {
+    z = 0;
+    dz = 0;
+    out_of_bounds = true;
+  }
+  if (x >= dims.x) {
+    x = dims.x-1.;
+    dx = resolution.x;
+    out_of_bounds = true;
+  } 
+  if (y >= dims.y) {
+    y = dims.y-1.;
+    dy = resolution.y;
+    out_of_bounds = true;
+  } 
+  if (z >= dims.z) {
+    z = dims.z-1.;
+    dz = resolution.z;
+    out_of_bounds = true;
+  } 
+  int bin = (int) (x*dims.y*dims.z + y*dims.z + z);
+  float energy = 0.;
+  float3 force;
+  force.x = 0.; 
+  force.y = 0.; 
+  force.z = 0.;
+  float norm_dx = dx / resolution.x;
+  float norm_dy = dy / resolution.y; // Does not need to be computed every time
+  float norm_dz = dz / resolution.z;
+  int i, j, k;
+  float pow_x = 0.;
+  float pow_y = 0.;
+  float pow_z = 0.;
+  for (i = 0; i < 4; i++) {
+      pow_y = 0.;
+      for (j = 0; j < 4; j++) {
+          pow_z = 0.;
+          for (k = 0; k < 4; k++) {
+              int a_index = i + 4*j + 16*k;
+              
+              float coefficient = h_cartProfileRestCoeffs[h_cartProfileRestStartingCoeff[counter] + 64*bin + a_index];
+              assert(isfinite(coefficient));
+              
+              energy = energy + coefficient * pow(norm_dx, i) * pow(norm_dy, j) * pow(norm_dz, k);
+              if (i > 0) {
+                  force.x = force.x - coefficient *
+                                     pow_x * pow(norm_dx, (i-1) ) * pow(norm_dy, j) * pow(norm_dz, k); }
+              if (j > 0) {
+                  force.y = force.y - coefficient *
+                                     pow_y * pow(norm_dx, i) * pow(norm_dy, (j-1) ) * pow(norm_dz, k); } // ALERT: this might be a problem for detailed balance if out of grid boundary
+              if (k > 0) {
+                  force.z = force.z - coefficient *
+                                     pow_z * pow(norm_dx, i) * pow(norm_dy, j) * pow(norm_dz, (k-1) ); }
+              pow_z = pow_z + 1.;
+          }
+          pow_y = pow_y + 1.;
+      }
+      pow_x = pow_x + 1.;
+  }
+  /*
+  energy_buffer[0] = energy;
+  force_buffer[0].x = force.x / resolution.x;
+  force_buffer[0].y = force.y / resolution.y; // because the slope was found in relation to norm_dx, we need to convert back to z
+  */
+  return force.z / resolution.z;
+  //return energy;
 }
-*/
+
 double CudaCalcMeldForceKernel::execute(ContextImpl& context, bool includeForces, bool includeEnergy) {
     // compute the forces and energies
     /* // Time evaluation
@@ -1231,11 +1350,6 @@ double CudaCalcMeldForceKernel::execute(ContextImpl& context, bool includeForces
       fout.close(); // close file
       assert(!fout.fail()); 
     }
-    
-    //distanceRestForces->download(h_distanceRestForces);
-    //for (counter=0; counter < numCartProfileRestraints; counter++) {
-    //    cout << "Distance force example: " << h_distanceRestForces[counter].x << "," << h_distanceRestForces[counter].y << "," << h_distanceRestForces[counter].z << "\n"; //
-    //}
     
     /*
     distanceRestEcoValues->download(h_distanceRestEcoValues);
@@ -1327,13 +1441,14 @@ double CudaCalcMeldForceKernel::execute(ContextImpl& context, bool includeForces
         /*
         cartProfileRestForces->download(h_cartProfileRestForces);
         restraintEnergies->download(h_restraintEnergies);
-        cartProfilePosBuffer->download(h_cartProfilePosBuffer);
+        cartProfilePosBuffer->download(h_cartProfilePosBuffer);  
         
-        // TODO: evaluate the energies here and now with another function
-        
-        
+        float energy;
         for (counter=0; counter < numCartProfileRestraints; counter++) {
-            cout << "Atom x,y,z: " << h_cartProfilePosBuffer[counter].x << "," << h_cartProfilePosBuffer[counter].y << "," << h_cartProfilePosBuffer[counter].z << " energy: " << h_restraintEnergies[h_cartProfileRestGlobalIndices[counter]] << " force x:" << h_cartProfileRestForces[counter].x << "\n"; //
+            cout << "Atom x,y,z: " << h_cartProfilePosBuffer[counter].x << "," << h_cartProfilePosBuffer[counter].y << "," << h_cartProfilePosBuffer[counter].z << " energy: " << h_restraintEnergies[h_cartProfileRestGlobalIndices[counter]] << " force z:" << h_cartProfileRestForces[counter].z << "\n"; //
+            //energy = eval_cart_profile(h_cartProfilePosBuffer[counter], h_cartProfileRestDims[counter], h_cartProfileRestOrigin[counter], h_cartProfileRestRes[counter], h_cartProfileRestStartingCoeff[counter], h_cartProfileRestCoeffs);
+            energy = eval_cart_profile(counter);
+            cout << "test force z: " << energy << "\n"; // << " test_force.x,y,z: " << h_cartProfileRestForces[0].x << "," << h_cartProfileRestForces[0].y << "," << h_cartProfileRestForces[0].z << "\n";
         }
         */
         
@@ -1343,7 +1458,7 @@ double CudaCalcMeldForceKernel::execute(ContextImpl& context, bool includeForces
     int sharedSizeGroup = largestGroup * (sizeof(float) + sizeof(int));
     int sharedSizeThreads = 32 * sizeof(float);
     int sharedSize = std::max(sharedSizeGroup, sharedSizeThreads);
-
+    
     void* groupArgs[] = {
         &numGroups,
         &groupNumActive->getDevicePointer(),
@@ -1354,7 +1469,7 @@ double CudaCalcMeldForceKernel::execute(ContextImpl& context, bool includeForces
         &restraintActive->getDevicePointer(),
         &groupEnergies->getDevicePointer()};
     cu.executeKernel(evaluateAndActivateKernel, groupArgs, 32 * numGroups, groupsPerBlock * 32, groupsPerBlock * sharedSize);
-
+    
     // the kernel will need to be modified if this value is changed
     const int threadsPerCollection = 1024;
     int sharedSizeCollectionEnergies = largestCollection * sizeof(float);
@@ -1376,7 +1491,9 @@ double CudaCalcMeldForceKernel::execute(ContextImpl& context, bool includeForces
         &groupActive->getDevicePointer(),
         &collectionEncounteredNaN->getDevicePointer()};
     cu.executeKernel(evaluateAndActivateCollectionsKernel, collArgs, threadsPerCollection*numCollections, threadsPerCollection, sharedSizeCollection);
+    
     // check if we encountered NaN
+    
     collectionEncounteredNaN->download(h_collectionEncounteredNaN);
     if (h_collectionEncounteredNaN[0]) {
         throw OpenMMException("Encountered NaN when evaluating collections.");

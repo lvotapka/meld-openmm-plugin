@@ -489,9 +489,9 @@ extern "C" __global__ void computeHyperbolicDistRest(
             f.y = delta.y * dEdR / r;
             f.z = delta.z * dEdR / r;
         } else {
-            f.x = 0.0;
-            f.y = 0.0;
-            f.z = 0.0;
+            f.x = 0.;
+            f.y = 0.;
+            f.z = 0.;
         }
         forceBuffer[index] = f;
 
@@ -748,16 +748,6 @@ for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*
             float y = floor((posq[atom_indices[tx]].y - origin[tx].y)/resolution[tx].y);
             float z = floor((posq[atom_indices[tx]].z - origin[tx].z)/resolution[tx].z);
             
-            assert(isfinite(resolution[tx].x));
-            assert(isfinite(resolution[tx].y));
-            assert(isfinite(resolution[tx].z));
-            assert(isfinite(origin[tx].x));
-            assert(isfinite(origin[tx].y));
-            assert(isfinite(origin[tx].z));
-            assert(isfinite(posq[atom_indices[tx]].x));
-            assert(isfinite(posq[atom_indices[tx]].y));
-            assert(isfinite(posq[atom_indices[tx]].z));
-            
             float dx = posq[atom_indices[tx]].x - (origin[tx].x + x*resolution[tx].x);
             float dy = posq[atom_indices[tx]].y - (origin[tx].y + y*resolution[tx].y); // the position of the atom in relation to the corner of this bin
             float dz = posq[atom_indices[tx]].z - (origin[tx].z + z*resolution[tx].z);
@@ -780,28 +770,28 @@ for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*
               out_of_bounds = true;
             }
             if (x >= dims[tx].x) {
-              x = dims[tx].x-1.0;
+              x = dims[tx].x-1.;
               dx = resolution[tx].x;
               out_of_bounds = true;
             } 
             if (y >= dims[tx].y) {
-              y = dims[tx].y-1.0;
+              y = dims[tx].y-1.;
               dy = resolution[tx].y;
               out_of_bounds = true;
             } 
             if (z >= dims[tx].z) {
-              z = dims[tx].z-1.0;
+              z = dims[tx].z-1.;
               dz = resolution[tx].z;
               out_of_bounds = true;
             } 
             
             int bin = (int) (x*dims[tx].y*dims[tx].z + y*dims[tx].z + z);
 
-            float energy = 0.0;
+            float energy = 0.;
             float3 force;
-            force.x = 0.0; 
-            force.y = 0.0; 
-            force.z = 0.0;
+            force.x = 0.; 
+            force.y = 0.; 
+            force.z = 0.;
             
             assert(isfinite(resolution[tx].x));
             float norm_dx = dx / resolution[tx].x;
@@ -809,23 +799,19 @@ for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*
             float norm_dz = dz / resolution[tx].z;
             
             // DEBUG
-            pos_buffer[tx].x = x;
-            pos_buffer[tx].y = y;
-            pos_buffer[tx].z = z;
-            
-            assert(isfinite(norm_dx));
-            assert(isfinite(norm_dy));
-            assert(isfinite(norm_dz));
+            pos_buffer[tx].x = posq[atom_indices[tx]].x;
+            pos_buffer[tx].y = posq[atom_indices[tx]].y;
+            pos_buffer[tx].z = posq[atom_indices[tx]].z;
             
             int i, j, k;
-            float pow_x = 0.0;
-            float pow_y = 0.0;
-            float pow_z = 0.0;
+            float pow_x = 0.;
+            float pow_y = 0.;
+            float pow_z = 0.;
             
             for (i = 0; i < 4; i++) {
-                pow_y = 0.0;
+                pow_y = 0.;
                 for (j = 0; j < 4; j++) {
-                    pow_z = 0.0;
+                    pow_z = 0.;
                     for (k = 0; k < 4; k++) {
                         int a_index = i + 4*j + 16*k;
                         
@@ -842,11 +828,11 @@ for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*
                         if (k > 0) {
                             force.z = force.z - coefficient *
                                                pow_z * pow(norm_dx, i) * pow(norm_dy, j) * pow(norm_dz, (k-1) ); }
-                        pow_z = pow_z + 1.0;
+                        pow_z = pow_z + 1.;
                     }
-                    pow_y = pow_y + 1.0;
+                    pow_y = pow_y + 1.;
                 }
-                pow_x = pow_x + 1.0;
+                pow_x = pow_x + 1.;
             }
             
             /*
@@ -856,12 +842,13 @@ for (int tx=blockIdx.x*blockDim.x+threadIdx.x; tx<numRestraints; tx+=blockDim.x*
                 force.z = 0;
             }*/
             
+            if (energy < 0.0) {
+              energy = 0.0;
+              force.x = 0.0;
+              force.y = 0.0;
+              force.z = 0.0;
+            }
             
-            assert(isfinite(energy));
-            assert(isfinite(force.x));
-            assert(isfinite(force.y));
-            assert(isfinite(force.z));
-                 
             energies[global_indices[tx]] = energy * scale_factor[tx];
             force_buffer[tx].x = force.x * scale_factor[tx] / resolution[tx].x;
             force_buffer[tx].y = force.y * scale_factor[tx] / resolution[tx].y; // because the slope was found in relation to norm_dx, we need to convert back to z
@@ -974,7 +961,7 @@ extern "C" __global__ void evaluateAndActivate(
         if (threadOffsetInWarp == 0) {
             targetEnergyArray[groupIndex] = warpReductionBuffer[0];
         }
-
+        
         // make sure we're all done before we start again
         __syncthreads();
     }
@@ -1071,6 +1058,9 @@ extern "C" __global__ void evaluateAndActivateCollections(
         findMinMax(length, energyBuffer, minBuffer, maxBuffer);
         float min = minBuffer[0];
         float max = maxBuffer[0];
+        
+        
+        
         float delta = max - min;
 
 
@@ -1093,6 +1083,8 @@ extern "C" __global__ void evaluateAndActivateCollections(
                 // check to see if have encountered NaN, which will
                 // result in an infinite loop
                 if(tid==0) {
+                    assert(isfinite(min));
+                    assert(isfinite(max));
                     if (!isfinite(min) || !isfinite(max)) {
                         *encounteredNaN = 1;
                     }

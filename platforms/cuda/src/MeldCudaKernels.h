@@ -46,6 +46,8 @@ public:
     void calcEcoValues();
     
     void testEverythingEco();
+    
+    float eval_cart_profile(int counter); //, float* energy_buffer, float3* force_buffer);
 
     double execute(OpenMM::ContextImpl& context, bool includeForces, bool includeEnergy);
 
@@ -338,6 +340,7 @@ private:
      * Each array has size numGroups
      */
     OpenMM::CudaArray* groupEnergies;                // energy for each group
+    std::vector<float> h_groupEnergies;
 
     OpenMM::CudaArray* groupActive;                  // is this group active?
 
