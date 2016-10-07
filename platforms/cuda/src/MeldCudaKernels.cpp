@@ -14,10 +14,12 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <fstream>
 #include <stdexcept>
 #include <numeric>
 #include <vector>
 #include <Eigen/Dense>
+#include <sys/time.h>
 
 #ifdef _MSC_VER
 #include <windows.h>
@@ -27,13 +29,13 @@ using namespace MeldPlugin;
 using namespace OpenMM;
 using namespace std;
 
+
 #define CHECK_RESULT(result) \
     if (result != CUDA_SUCCESS) { \
         std::stringstream m; \
         m<<errorMessage<<": "<<cu.getErrorString(result)<<" ("<<result<<")"<<" at "<<__FILE__<<":"<<__LINE__; \
         throw OpenMMException(m.str());\
     }
-
 
 CudaCalcMeldForceKernel::CudaCalcMeldForceKernel(std::string name, const Platform& platform, CudaContext& cu,
                                                  const System& system) :
@@ -46,7 +48,7 @@ CudaCalcMeldForceKernel::CudaCalcMeldForceKernel(std::string name, const Platfor
         cout << "***" << endl;
         throw OpenMMException("MeldForce does not support double precision");
     }
-
+        
     numDistRestraints = 0;
     numHyperbolicDistRestraints = 0;
     numTorsionRestraints = 0;
@@ -54,13 +56,41 @@ CudaCalcMeldForceKernel::CudaCalcMeldForceKernel(std::string name, const Platfor
     numRestraints = 0;
     numGroups = 0;
     numCollections = 0;
+    ecoCutoff = 0;
+    numResidues = 0;
     largestGroup = 0;
     largestCollection = 0;
     groupsPerBlock = -1;
+    MAX_ECO_DEPTH = 7;
+    eco_output_freq = 1000;
+    eco_value_all_dist_rests = 0;
+    on_step = 0;
+    print_avg_eco = false;
+    print_eco_value_array = false;
+    current_replica_index = 0;
+    starting_replica_index = 0;
 
     distanceRestRParams = NULL;
     distanceRestKParams = NULL;
+    distanceRestDoingEco = NULL;
+    distanceRestEcoFactors = NULL;
+    distanceRestEcoConstants = NULL;
+    distanceRestEcoLinears = NULL;
+    distanceRestEcoValues = NULL;
+    //distanceRestCOValues = NULL;
+    distanceRestContacts = NULL;
+    distanceRestEdgeCounts = NULL;
+    alphaCarbons = NULL;
+    dijkstra_unexplored = NULL;
+    dijkstra_unexplored_old = NULL;
+    dijkstra_frontier = NULL;
+    dijkstra_frontier_old = NULL;
+    dijkstra_distance = NULL;
+    dijkstra_n_explored = NULL;
+    dijkstra_total = NULL;
+    alphaCarbonPosq = NULL;
     distanceRestAtomIndices = NULL;
+    distanceRestResidueIndices = NULL;
     distanceRestGlobalIndices = NULL;
     distanceRestForces = NULL;
     hyperbolicDistanceRestRParams = NULL;
@@ -92,6 +122,7 @@ CudaCalcMeldForceKernel::CudaCalcMeldForceKernel(std::string name, const Platfor
     torsProfileRestGlobalIndices = NULL;
     torsProfileRestForces = NULL;
     restraintEnergies = NULL;
+    nonECOrestraintEnergies = NULL;
     restraintActive = NULL;
     groupRestraintIndices = NULL;
     groupRestraintIndicesTemp = NULL;
@@ -110,7 +141,25 @@ CudaCalcMeldForceKernel::~CudaCalcMeldForceKernel() {
     cu.setAsCurrent();
     delete distanceRestRParams;
     delete distanceRestKParams;
+    delete distanceRestDoingEco;
+    delete distanceRestEcoFactors;
+    delete distanceRestEcoConstants;
+    delete distanceRestEcoLinears;
+    delete distanceRestEcoValues;
+    //delete distanceRestCOValues;
+    delete distanceRestContacts;
+    delete distanceRestEdgeCounts;
+    delete alphaCarbons;
+    delete dijkstra_unexplored;
+    delete dijkstra_unexplored_old;
+    delete dijkstra_frontier;
+    delete dijkstra_frontier_old;
+    delete dijkstra_distance;
+    delete dijkstra_n_explored;
+    delete dijkstra_total;
+    delete alphaCarbonPosq;
     delete distanceRestAtomIndices;
+    delete distanceRestResidueIndices;
     delete distanceRestGlobalIndices;
     delete distanceRestForces;
     delete hyperbolicDistanceRestRParams;
@@ -142,6 +191,7 @@ CudaCalcMeldForceKernel::~CudaCalcMeldForceKernel() {
     delete torsProfileRestGlobalIndices;
     delete torsProfileRestForces;
     delete restraintEnergies;
+    delete nonECOrestraintEnergies;
     delete restraintActive;
     delete groupRestraintIndices;
     delete groupRestraintIndicesTemp;
@@ -167,14 +217,47 @@ void CudaCalcMeldForceKernel::allocateMemory(const MeldForce& force) {
     numRestraints = force.getNumTotalRestraints();
     numGroups = force.getNumGroups();
     numCollections = force.getNumCollections();
+    ecoCutoff = force.getEcoCutoff();
+    numResidues = force.getNumResidues();
+    eco_output_freq = force.getEcoOutputFreq();
+    print_avg_eco = force.getPrintAvgEco();
+    print_eco_value_array = force.getPrintEcoValueArray();
+    current_replica_index = force.getCurrentReplicaIndex();
+    starting_replica_index = force.getStartingReplicaIndex();
+    
+    INF = 9999;
+    timevar = 0;
+    timecount = 0;
+    
+    MAX_THREADS = cu.ThreadBlockSize * cu.getNumThreadBlocks();
 
     // setup device memory
     if (numDistRestraints > 0) {
         distanceRestRParams        = CudaArray::create<float4> ( cu, numDistRestraints, "distanceRestRParams");
         distanceRestKParams        = CudaArray::create<float>  ( cu, numDistRestraints, "distanceRestKParams");
-        distanceRestAtomIndices    = CudaArray::create<int2>    ( cu, numDistRestraints, "distanceRestAtomIndices");
+        distanceRestDoingEco       = CudaArray::create<int>    ( cu, numDistRestraints, "distanceRestDoingEco");
+        distanceRestEcoFactors     = CudaArray::create<float>  ( cu, numDistRestraints, "distanceRestEcoFactors");
+        distanceRestEcoConstants   = CudaArray::create<float>  ( cu, numDistRestraints, "distanceRestEcoConstants");
+        distanceRestEcoLinears     = CudaArray::create<float>  ( cu, numDistRestraints, "distanceRestEcoLinears");
+        distanceRestEcoValues      = CudaArray::create<float>  ( cu, numDistRestraints, "distanceRestEcoValues");
+        //distanceRestCOValues       = CudaArray::create<float>  ( cu, numDistRestraints, "distanceRestCOValues");
+	distanceRestContacts             = CudaArray::create<int>    ( cu, numResidues*numResidues, "distanceRestContacts");
+	distanceRestEdgeCounts           = CudaArray::create<int>    ( cu, numResidues, "distanceRestEdgeCounts");
+        distanceRestAtomIndices    = CudaArray::create<int2>   ( cu, numDistRestraints, "distanceRestAtomIndices");
+  distanceRestResidueIndices       = CudaArray::create<int2>   ( cu, numDistRestraints, "distanceRestResidueIndices");
         distanceRestGlobalIndices  = CudaArray::create<int>    ( cu, numDistRestraints, "distanceRestGlobalIndices");
         distanceRestForces         = CudaArray::create<float3> ( cu, numDistRestraints, "distanceRestForces");
+        
+        
+	alphaCarbons		                 = CudaArray::create<int>    ( cu, numResidues, "alphaCarbons");
+	dijkstra_unexplored              = CudaArray::create<bool>   ( cu, numResidues, "dijkstra_unexplored");
+  dijkstra_unexplored_old          = CudaArray::create<bool>   ( cu, numResidues, "dijkstra_unexplored_old");
+  dijkstra_frontier                = CudaArray::create<bool>   ( cu, numResidues, "dijkstra_frontier");
+  dijkstra_frontier_old            = CudaArray::create<bool>   ( cu, numResidues, "dijkstra_frontier_old");
+  dijkstra_distance                = CudaArray::create<int>    ( cu, numResidues, "dijkstra_distance");
+  dijkstra_n_explored              = CudaArray::create<int>    ( cu, numResidues, "dijkstra_n_explored");
+  dijkstra_total                   = CudaArray::create<int>    ( cu, 1, "dijkstra_total");
+  alphaCarbonPosq                  = CudaArray::create<float>  ( cu, numResidues*3, "alphaCarbonPosq");
     }
 
     if (numHyperbolicDistRestraints > 0) {
@@ -218,6 +301,7 @@ void CudaCalcMeldForceKernel::allocateMemory(const MeldForce& force) {
     }
 
     restraintEnergies         = CudaArray::create<float>  ( cu, numRestraints,     "restraintEnergies");
+    nonECOrestraintEnergies   = CudaArray::create<float>  ( cu, numRestraints,     "nonECOrestraintEnergies");
     restraintActive           = CudaArray::create<float>  ( cu, numRestraints,     "restraintActive");
     groupRestraintIndices     = CudaArray::create<int>    ( cu, numRestraints,     "groupRestraintIndices");
     groupRestraintIndicesTemp = CudaArray::create<int>    ( cu, numRestraints,     "groupRestraintIndicesTemp");
@@ -234,7 +318,31 @@ void CudaCalcMeldForceKernel::allocateMemory(const MeldForce& force) {
     // setup host memory
     h_distanceRestRParams                 = std::vector<float4> (numDistRestraints, make_float4( 0, 0, 0, 0));
     h_distanceRestKParams                 = std::vector<float>  (numDistRestraints, 0);
+    h_distanceRestDoingEco                = std::vector<int>    (numDistRestraints, 0);
+    h_distanceRestEcoFactors              = std::vector<float>  (numDistRestraints, 0);
+    h_distanceRestEcoConstants            = std::vector<float>  (numDistRestraints, 0);
+    h_distanceRestEcoLinears              = std::vector<float>  (numDistRestraints, 0);
+    //h_distanceRestCOValues                = std::vector<float>  (numDistRestraints, 0);
+    h_alphaCarbons                        = std::vector<int>    (numResidues, 0);
+    h_distRestSorted                      = std::vector<int>    (numDistRestraints * 3, 0);
+h_restraintEnergies                       = std::vector<float>    (numRestraints, 888.0);
+h_restraintNonEcoEnergies                 = std::vector<float>    (numRestraints, 0);
+h_distanceRestContacts                    = std::vector<int>    (numResidues*numResidues, 0);
+h_distanceRestEdgeCounts                  = std::vector<int>    (numResidues, 0);
+h_dijkstra_total                          = std::vector<int>    (1, 0);
+h_dijkstra_distance                       = std::vector<int>    (numResidues, 0);
+h_dijkstra_distance2                      = std::vector<int>    (numResidues, 0);
+h_distanceRestEcoValues                   = std::vector<float>  (numDistRestraints, 0);
+h_distanceRestForces                      = std::vector<float3>  (numDistRestraints, make_float3(777.0, 777.0, 777.0));
+h_alphaCarbonPosq                         = std::vector<float>  (numResidues*3, 0);
+h_dijkstra_unexplored                     = std::vector<int>    (numResidues, 0);
+h_dijkstra_unexplored_old                 = std::vector<int>    (numResidues, 0);
+h_dijkstra_frontier                       = std::vector<int>    (numResidues, 0);
+h_dijkstra_frontier_old                   = std::vector<int>    (numResidues, 0);
+h_dijkstra_n_explored                     = std::vector<int>    (numResidues, 0);
+h_dijkstra_n_explored_old                 = std::vector<int>    (numResidues, 0);
     h_distanceRestAtomIndices             = std::vector<int2>   (numDistRestraints, make_int2( -1, -1));
+    h_distanceRestResidueIndices          = std::vector<int2>   (numDistRestraints, make_int2( -1, -1));
     h_distanceRestGlobalIndices           = std::vector<int>    (numDistRestraints, -1);
     h_hyperbolicDistanceRestRParams       = std::vector<float4> (numHyperbolicDistRestraints, make_float4( 0, 0, 0, 0));
     h_hyperbolicDistanceRestParams        = std::vector<float4> (numHyperbolicDistRestraints, make_float4( 0, 0, 0, 0));
@@ -397,7 +505,11 @@ void CudaCalcMeldForceKernel::setupDistanceRestraints(const MeldForce& force) {
     for (int i=0; i < numDistRestraints; ++i) {
         int atom_i, atom_j, global_index;
         float r1, r2, r3, r4, k;
-        force.getDistanceRestraintParams(i, atom_i, atom_j, r1, r2, r3, r4, k, global_index);
+        bool doing_eco;
+        float eco_factor, eco_constant, eco_linear;
+        int res_index1;
+        int res_index2;
+        force.getDistanceRestraintParams(i, atom_i, atom_j, r1, r2, r3, r4, k, doing_eco, eco_factor, eco_constant, eco_linear, res_index1, res_index2, global_index);
 
         checkAtomIndex(numAtoms, restType, atom_i, i, global_index);
         checkAtomIndex(numAtoms, restType, atom_j, i, global_index);
@@ -406,9 +518,39 @@ void CudaCalcMeldForceKernel::setupDistanceRestraints(const MeldForce& force) {
 
         h_distanceRestRParams[i] = make_float4(r1, r2, r3, r4);
         h_distanceRestKParams[i] = k;
+        h_distanceRestDoingEco[i] = doing_eco;
+        h_distanceRestEcoFactors[i] = eco_factor;
+        h_distanceRestEcoConstants[i] = eco_constant;
+        h_distanceRestEcoLinears[i] = eco_linear;
+        //h_distanceRestCOValues[i] = abs((float)res_index2 - (float)res_index1); // compute the true contact order
+        //cout << "res_index1:" << res_index1 << " res_index2:" << res_index2 << " CO:" << h_distanceRestCOValues[i] << "\n";
+
+        //h_distanceRestEcoValues[i] = 1.0; // LANE: we need to have the MELD code fill this value with the eco between the two atoms of this restraint
+
         h_distanceRestAtomIndices[i] = make_int2(atom_i, atom_j);
+        h_distanceRestResidueIndices[i] = make_int2(res_index1, res_index2);
         h_distanceRestGlobalIndices[i] = global_index;
+        
     }
+    
+    //cout << "alpha carbons: ";
+    for (int i=0; i < numResidues; ++i) {
+        h_alphaCarbons[i] = force.getAlphaCarbons()[i];
+        //cout << h_alphaCarbons[i] << " ";
+    }
+    //cout << "\n";
+    //cout << "numDistRestrains: " << numDistRestraints << "\n"; 
+    //cout << "Distance Restraint Sorted:";
+    for (int i = 0; i < numDistRestraints; i++) {
+      h_distRestSorted[i*3] = force.getDistRestSorted()[i*3];
+      h_distRestSorted[i*3+1] = force.getDistRestSorted()[i*3+1];
+      h_distRestSorted[i*3+2] = force.getDistRestSorted()[i*3+2];
+      //cout << h_distRestSorted[i*3] << "-" << h_distRestSorted[i*3 + 1] << ":" << h_distRestSorted[i*3 + 2] << " ";
+    }
+    //cout << "\n";
+    
+    //cout << "numResidues: " << numResidues << "\n"; 
+    
 }
 
 
@@ -620,13 +762,33 @@ void CudaCalcMeldForceKernel::setupCollections(const MeldForce& force) {
 
 
 void CudaCalcMeldForceKernel::validateAndUpload() {
+    int counter;
+    
+    restraintEnergies->upload(h_restraintEnergies);
+    
     if (numDistRestraints > 0) {
         distanceRestRParams->upload(h_distanceRestRParams);
         distanceRestKParams->upload(h_distanceRestKParams);
+        distanceRestDoingEco->upload(h_distanceRestDoingEco);
+        distanceRestEcoFactors->upload(h_distanceRestEcoFactors);
+        distanceRestEcoConstants->upload(h_distanceRestEcoConstants);
+        distanceRestEcoLinears->upload(h_distanceRestEcoLinears);
+        //distanceRestCOValues->upload(h_distanceRestCOValues);
+	alphaCarbons->upload(h_alphaCarbons);
         distanceRestAtomIndices->upload(h_distanceRestAtomIndices);
+        distanceRestResidueIndices->upload(h_distanceRestResidueIndices);
         distanceRestGlobalIndices->upload(h_distanceRestGlobalIndices);
+        distanceRestForces->upload(h_distanceRestForces);
     }
-
+    
+    /*
+    cout << "CO values:\n";
+    for (counter=0; counter < numDistRestraints; counter++) {
+      cout << counter << ":" << h_distanceRestCOValues[counter] << " ";
+    }
+    cout << "\n";
+    */
+    
     if (numHyperbolicDistRestraints > 0) {
         hyperbolicDistanceRestRParams->upload(h_hyperbolicDistanceRestRParams);
         hyperbolicDistanceRestParams->upload(h_hyperbolicDistanceRestParams);
@@ -719,6 +881,14 @@ void CudaCalcMeldForceKernel::initialize(const System& system, const MeldForce& 
     applyTorsionRestKernel = cu.getKernel(module, "applyTorsionRest");
     applyDistProfileRestKernel = cu.getKernel(module, "applyDistProfileRest");
     applyTorsProfileRestKernel = cu.getKernel(module, "applyTorsProfileRest");
+    computeContactsKernel = cu.getKernel(module, "computeContacts");
+    computeEdgeListKernel = cu.getKernel(module, "computeEdgeList");
+    dijkstra_initializeKernel = cu.getKernel(module, "dijkstra_initialize");
+    //dijkstra_save_old_vectorsKernel = cu.getKernel(module, "dijkstra_save_old_vectors");
+    dijkstra_settle_and_updateKernel = cu.getKernel(module, "dijkstra_settle_and_update");
+    //dijkstra_log_reduceKernel = cu.getKernel(module, "dijkstra_log_reduce");
+    assignRestEcoKernel = cu.getKernel(module, "assignRestEco");
+    test_get_alpha_carbon_posqKernel = cu.getKernel(module, "test_get_alpha_carbon_posq");
 }
 
 
@@ -738,22 +908,360 @@ void CudaCalcMeldForceKernel::copyParametersToContext(ContextImpl& context, cons
     cu.invalidateMolecules();
 }
 
+/*
+ * This function handles the calculation of the eco values. First a graph of contacts is created, then shortest paths are calculated.
+ * The eco values are stored in distanceRestEcoValues on the device.
+ */
+void CudaCalcMeldForceKernel::calcEcoValues() {
+  int counter = 0;
+  int counter2;
+  int src = -1; // so the pathfinding algorithm is run with the first restraint
+  int dest = 0;
+  int num_explored = 1;
+  struct timeval endtime;
+  long int starttime;
+  long int timediff;
+  long int timesum = 0;
+  long int timecount = 0;
+  int rest_index;
+  
+  //gettimeofday(&endtime, NULL);
+  
+    void* contactsArgs[] = {
+	&cu.getPosq().getDevicePointer(),
+	&distanceRestAtomIndices->getDevicePointer(),
+	&numResidues,
+	&MAX_THREADS,
+	&ecoCutoff,
+	&distanceRestContacts->getDevicePointer(),
+	&alphaCarbons->getDevicePointer()};
+
+    cu.executeKernel(computeContactsKernel, contactsArgs, numResidues*numResidues);
+    
+    void* edgeListArgs[] = {
+	&distanceRestContacts->getDevicePointer(),
+	&distanceRestEdgeCounts->getDevicePointer(),
+	&numResidues};
+
+    cu.executeKernel(computeEdgeListKernel, edgeListArgs, numResidues);
+  
+  // Define all the arguments by reference that will be passed to the CUDA kernels
+    void* dijkstra_initializeArgs[] = {
+  &dijkstra_unexplored->getDevicePointer(),
+  &dijkstra_frontier->getDevicePointer(),
+  &dijkstra_distance->getDevicePointer(),
+  &dijkstra_n_explored->getDevicePointer(),
+  &src,
+  &INF,
+  &numResidues};
+  
+   /* void* dijkstra_save_oldArgs[] = {
+  &dijkstra_unexplored->getDevicePointer(),
+  &dijkstra_unexplored_old->getDevicePointer(),
+  &dijkstra_frontier->getDevicePointer(),
+  &dijkstra_frontier_old->getDevicePointer(),
+  &numResidues};
+  */
+    void* dijkstra_settle_and_updateArgs[] = {
+  &dijkstra_unexplored->getDevicePointer(),
+  &dijkstra_unexplored_old->getDevicePointer(),
+  &dijkstra_frontier->getDevicePointer(),
+  &dijkstra_frontier_old->getDevicePointer(),
+  &dijkstra_distance->getDevicePointer(),
+  &distanceRestEdgeCounts->getDevicePointer(),
+  &distanceRestContacts->getDevicePointer(),
+  &dijkstra_n_explored->getDevicePointer(),
+  &counter2,
+  &numResidues};
+  
+  /*  void* dijkstra_log_reduceArgs[] = {
+  &numResidues,
+  &dijkstra_n_explored->getDevicePointer(),
+  &dijkstra_total->getDevicePointer()};
+  */
+    void* assignRestEcoArgs[] = {
+  &src,
+  &numDistRestraints,
+  &MAX_THREADS,
+  &distanceRestResidueIndices->getDevicePointer(),
+  &dijkstra_distance->getDevicePointer(),
+  &distanceRestEcoValues->getDevicePointer()
+    };
+  //int flag = 0;
+  
+  /*starttime = endtime.tv_usec;
+  gettimeofday(&endtime, NULL);
+  timediff = (long int)(endtime.tv_usec) - starttime;
+  cout << "Time to compute input arguments: " << timediff << "\n";
+  gettimeofday(&endtime, NULL);*/
+  
+  for (counter = 0; counter < numDistRestraints; counter++) {
+    rest_index = h_distRestSorted[counter*3 + 2]; // the index of the distance restraint that we are computing ECO for
+    if ((h_distanceRestResidueIndices[rest_index].x > src) && (h_distanceRestDoingEco[rest_index] == 1)) { // if we have a new source for this restraint (since they're sorted)
+      src = h_distanceRestResidueIndices[rest_index].x; // then update this source index and rerun Dijkstra
+      //cout << "now on source: " << src << ". Rerunning Dijkstra's\n";
+      
+      cu.executeKernel(dijkstra_initializeKernel, dijkstra_initializeArgs, numResidues); // initialize Dijkstra variables
+      counter2 = 0;
+      num_explored = 1; // the source at least has been explored
+      while ((counter2 <= MAX_ECO_DEPTH) && (num_explored < numResidues)) { // (counter2 <= numResidues-1)
+        cu.executeKernel(dijkstra_settle_and_updateKernel, dijkstra_settle_and_updateArgs, numResidues); // update exploration values
+        counter2++;
+      }
+      cu.executeKernel(assignRestEcoKernel, assignRestEcoArgs, numDistRestraints); // give each distance restraint its ECO value
+    }
+    /*distanceRestEcoValues->download(h_distanceRestEcoValues);
+    dest = h_distanceRestResidueIndices[rest_index].y; // NOTE: remove?
+    if ((h_dijkstra_distance[dest] != h_distanceRestEcoValues[rest_index]) && (h_distanceRestDoingEco[rest_index] == 1) && (flag == 0)) {
+      cout << "discrepancy! src: " << src << " dest: " << dest << " dist:" << h_dijkstra_distance[dest] << " value:" << h_distanceRestEcoValues[rest_index] << " numDistRestraints:" << numDistRestraints << " rest_index: " << rest_index << "\n";
+      flag = 1;
+    }*/
+  }
+  //flag = 0;
+  
+  //distanceRestEcoValues->download(h_distanceRestEcoValues);
+  //distanceRestEcoFactors->download(h_distanceRestEcoFactors);
+  //cout << "ECO values per restraint (before): ";
+  //for (counter = 0; counter < numDistRestraints; counter++) {
+  //  cout << h_distanceRestResidueIndices[counter].x << "-" << h_distanceRestResidueIndices[counter].y << ": e" << h_distanceRestEcoValues[counter] << " d" << h_distanceRestDoingEco[counter] << ", ";
+  //}
+  //cout << "\n";
+ 
+  /*starttime = endtime.tv_usec;
+  gettimeofday(&endtime, NULL);
+  timediff = (long int)(endtime.tv_usec) - starttime;
+  cout << "Time to do Dijkstra for all restraints: " << timediff << "\n"; */
+}
+
+void CudaCalcMeldForceKernel::testEverythingEco() {
+  int counter, counter2, contact_ptr, order;
+  float err_tol = 0.0001;
+  float dist_sq;
+  float x, y, z;
+  int src = 0;
+  int num_explored = 1;
+  int edge_index, head;
+  
+  // We need to run a series of tests to make sure that everything is behaving like we expect
+  void* test_get_alpha_carbon_posqArgs[] = {
+    &cu.getPosq().getDevicePointer(),
+    &alphaCarbonPosq->getDevicePointer(),
+    &alphaCarbons->getDevicePointer(),
+    &numResidues
+  };
+  
+  cu.executeKernel(test_get_alpha_carbon_posqKernel, test_get_alpha_carbon_posqArgs, numResidues);
+  
+  //cout << "mark0\n";
+  alphaCarbonPosq->download(h_alphaCarbonPosq);
+  /*cout << "Alpha Carbon x,y,z:\n";
+  for (counter = 0; counter < numResidues; counter++) {
+    cout << h_alphaCarbonPosq[counter*3] << "," << h_alphaCarbonPosq[counter*3 + 1] << "," << h_alphaCarbonPosq[counter*3 + 2] << " ";
+  }
+  cout << "\n";  */
+  distanceRestContacts->download(h_distanceRestContacts);
+  
+  /*
+  for (counter = 0; counter < numResidues; counter++) {
+    contact_ptr = 0;
+    for (counter2 = 0; counter2 < numResidues; counter2++) {
+      x = h_alphaCarbonPosq[counter*3] - h_alphaCarbonPosq[counter2*3];
+      y = h_alphaCarbonPosq[counter*3 + 1] - h_alphaCarbonPosq[counter2*3 + 1];
+      z = h_alphaCarbonPosq[counter*3 + 2] - h_alphaCarbonPosq[counter2*3 + 2];
+      dist_sq = x*x + y*y + z*z;
+      if ( h_distanceRestContacts[numResidues * counter + contact_ptr] == counter2 ) { // then we've hit an edge
+        //cout << "Edge between node: " << counter << " and node: " << counter2 << "\n";
+        if (dist_sq > ecoCutoff*ecoCutoff && (counter != counter2 - 1 || counter != counter2 + 1)) { // so if the actual distance is greater than expected, then something's wrong
+          cout << "ERROR: contact map problem: counter: " << counter << " counter2: " << counter2 << " contact predicted to exist yet distance squared is: " << dist_sq << "\n";
+        }
+        contact_ptr++; // increment this pointer
+      } else { // no contact predicted
+        if (dist_sq < ecoCutoff*ecoCutoff && counter != counter2) { // so if the actual distance is less than cutoff, then something's wrong
+          cout << "ERROR: contact map problem: counter: " << counter << " counter2: " << counter2 << " contact predicted not to exist yet distance squared is: " << dist_sq << "\n";
+        }
+      }
+    }
+  }*/
+  
+  
+  // Now test Dijkstra's algorithm results
+  for (counter = 0; counter < numResidues; counter++) { // first, initialize the arrays
+    h_dijkstra_unexplored[counter] = true;
+    h_dijkstra_frontier[counter] = false;
+    h_dijkstra_distance[counter] = abs(counter - src);
+    h_dijkstra_n_explored[counter] = 0;
+    if (counter == src) {
+      h_dijkstra_unexplored[counter] = false;
+      h_dijkstra_frontier[counter] = true;
+      h_dijkstra_distance[counter] = 0;
+    }
+  }
+    
+  distanceRestEdgeCounts->download(h_distanceRestEdgeCounts);
+  
+  counter2 = 0;
+  num_explored = 1;
+  while ((counter2 <= MAX_ECO_DEPTH) && (num_explored < numResidues)) {
+    for (counter = 0; counter < numResidues; counter++) { // save the old arrays
+      h_dijkstra_unexplored_old[counter] = h_dijkstra_unexplored[counter];
+      h_dijkstra_frontier_old[counter] = h_dijkstra_frontier[counter];
+    }
+    
+    for (counter = 0; counter < numResidues; counter++) { // settle and update
+      h_dijkstra_n_explored[counter] = 0;
+      if (h_dijkstra_unexplored_old[counter] == true) {
+        for (contact_ptr = 0; contact_ptr < h_distanceRestEdgeCounts[counter]; contact_ptr++) {
+          edge_index = (numResidues * counter) + contact_ptr;
+          head = h_distanceRestContacts[edge_index];  // the index of the node that is leading to this one
+          //cout << "edge from node " << counter << " to " << head << "\n";
+          if (h_dijkstra_frontier_old[head] == true) { // if the head node is on the frontier, the we need to change our explored status
+            h_dijkstra_frontier[counter] = true; // then add myself to the frontier
+            h_dijkstra_unexplored[counter] = false; // remove myself from the unexplored
+            h_dijkstra_distance[counter] = counter2 + 1; // the number of iterations we've needed to find me is the distance
+            num_explored++;
+            break;
+          }
+        }
+      }
+    }
+    counter2++;
+  }
+  
+  // Now rerun the GPU pathfinding algorithm
+   void* dijkstra_initializeArgs[] = {
+  &dijkstra_unexplored->getDevicePointer(),
+  &dijkstra_frontier->getDevicePointer(),
+  &dijkstra_distance->getDevicePointer(),
+  &dijkstra_n_explored->getDevicePointer(),
+  &src,
+  &INF,
+  &numResidues};
+  
+    /*void* dijkstra_save_oldArgs[] = {
+  &dijkstra_unexplored->getDevicePointer(),
+  &dijkstra_unexplored_old->getDevicePointer(),
+  &dijkstra_frontier->getDevicePointer(),
+  &dijkstra_frontier_old->getDevicePointer(),
+  &numResidues};
+  */
+    void* dijkstra_settle_and_updateArgs[] = {
+  &dijkstra_unexplored->getDevicePointer(),
+  &dijkstra_unexplored_old->getDevicePointer(),
+  &dijkstra_frontier->getDevicePointer(),
+  &dijkstra_frontier_old->getDevicePointer(),
+  &dijkstra_distance->getDevicePointer(),
+  &distanceRestEdgeCounts->getDevicePointer(),
+  &distanceRestContacts->getDevicePointer(),
+  &dijkstra_n_explored->getDevicePointer(),
+  &counter2,
+  &numResidues};
+  
+    /*void* dijkstra_log_reduceArgs[] = {
+  &numResidues,
+  &dijkstra_n_explored->getDevicePointer(),
+  &dijkstra_total->getDevicePointer()};
+  */
+  cu.executeKernel(dijkstra_initializeKernel, dijkstra_initializeArgs, numResidues);
+  counter2 = 0;
+  num_explored = 1;
+  
+  while ((counter2 <= MAX_ECO_DEPTH) && (num_explored < numResidues)) {
+    cu.executeKernel(dijkstra_settle_and_updateKernel, dijkstra_settle_and_updateArgs, numResidues);
+    //num_explored += h_dijkstra_total[0];
+    counter2++;
+  }
+  
+  // by this point, the graphs should be explored
+  dijkstra_distance->download(h_dijkstra_distance2);
+  for (counter = 0; counter < numResidues; counter++) {
+    if (h_dijkstra_distance[counter] != h_dijkstra_distance2[counter] ) { // if these two distances are not equal, then one of the pathfinding algorithms is broken
+      cout << "ERROR: pathfinding algorithm discrepancy. Src: 0. Dest: " << counter << " (CPU): " << h_dijkstra_distance[counter] << " (GPU): " << h_dijkstra_distance2[counter] << "\n";
+    }
+  }
+  
+}
 
 double CudaCalcMeldForceKernel::execute(ContextImpl& context, bool includeForces, bool includeEnergy) {
     // compute the forces and energies
+    /* // Time evaluation
+    int oldtime = timevar; // save the old timestamp
+    struct timeval newtime;
+    gettimeofday(&newtime, NULL);
+    timevar = (long int)(newtime.tv_usec);
+    cout << "TIME ELAPSED: " << timevar - oldtime << "\n"; */
+    
+    int counter;
+    int global_counter;
     if (numDistRestraints > 0) {
+        
+        calcEcoValues(); // calculate the graph that will be used in the ECO calcs
+        /*distanceRestEcoValues->download(h_distanceRestEcoValues);
+        distanceRestEcoFactors->download(h_distanceRestEcoFactors);
+        cout << "ECO values per restraint (after): ";
+        for (counter = 0; counter < numDistRestraints; counter++) {
+          cout << h_distanceRestResidueIndices[counter].x << "-" << h_distanceRestResidueIndices[counter].y << ": value: " << h_distanceRestEcoValues[counter] << " "; //factor:" << h_distanceRestEcoFactors[counter] << "\n";
+        }
+        cout << "\n";*/
+        
+        //testEverythingEco(); // comment out this line in the final production version
+        
         void* distanceArgs[] = {
             &cu.getPosq().getDevicePointer(),
             &distanceRestAtomIndices->getDevicePointer(),
             &distanceRestRParams->getDevicePointer(),
             &distanceRestKParams->getDevicePointer(),
+            &distanceRestDoingEco->getDevicePointer(), 
+            &distanceRestEcoFactors->getDevicePointer(),
+            &distanceRestEcoConstants->getDevicePointer(),
+            &distanceRestEcoLinears->getDevicePointer(),
+            &distanceRestEcoValues->getDevicePointer(),
             &distanceRestGlobalIndices->getDevicePointer(),
             &restraintEnergies->getDevicePointer(),
+            &nonECOrestraintEnergies->getDevicePointer(),
             &distanceRestForces->getDevicePointer(),
-            &numDistRestraints};
+            &numDistRestraints}; // this is getting the reference pointer for each of these arrays
         cu.executeKernel(computeDistRestKernel, distanceArgs, numDistRestraints);
+        
+        
     }
-
+    
+    if (on_step % eco_output_freq == (eco_output_freq-1)) { // then we need to output ECO information
+      fout.open("eco.log", ios::app); // open ECO file for appending
+      assert(!fout.fail());
+      fout << "ECO: current replica id: " << current_replica_index << " starting replica id: " << starting_replica_index << " on step: " << on_step << " eco_output_freq: " << eco_output_freq << "\n";
+      if (print_avg_eco) {
+        distanceRestEcoValues->download(h_distanceRestEcoValues);
+        eco_value_all_dist_rests = 0;
+        for (counter = 0; counter < numDistRestraints; counter++) {
+          eco_value_all_dist_rests += (int) h_distanceRestEcoValues[counter]; // sum up all of the ECO values
+        }
+        fout << "ECO:   average ECO in this step: " << eco_value_all_dist_rests / numDistRestraints << "\n";
+      }
+      if (print_eco_value_array) {
+        distanceRestEcoValues->download(h_distanceRestEcoValues);
+        fout << "ECO:   values: ";
+        for (counter = 0; counter < numDistRestraints; counter++) {
+          fout << h_distanceRestAtomIndices[counter].x << "-" << h_distanceRestAtomIndices[counter].y << ":" << h_distanceRestEcoValues[counter] << " ";
+        }
+        fout << "\n";
+      }
+      fout.close(); // close file
+      assert(!fout.fail()); 
+    }
+     /*
+    distanceRestEcoValues->download(h_distanceRestEcoValues);
+    restraintEnergies->download(h_restraintEnergies);
+    nonECOrestraintEnergies->download(h_restraintNonEcoEnergies);
+    distanceRestGlobalIndices->download(h_distanceRestGlobalIndices);
+    cout << "energy per restraint: \n";
+    for (counter = 0; counter < numDistRestraints; counter++) {
+      //cout << "h_distanceRestEcoValues[" << counter << "]: " << h_distanceRestEcoValues[counter] << "\n";
+      //cout << h_distanceRestResidueIndices[counter].x << "-" << h_distanceRestResidueIndices[counter].y << ":" << h_distanceRestEcoValues[counter] << " ";
+      global_counter = h_distanceRestGlobalIndices[counter];
+      cout << "eco[" << counter << "]: " << h_distanceRestEcoValues[counter] << ", energy: " << h_restraintEnergies[global_counter] << ", nonEco: " << h_restraintNonEcoEnergies[global_counter] << "\n";
+    } 
+    cout << "\n";*/
+    
     if (numHyperbolicDistRestraints > 0) {
         void* hyperbolicDistanceArgs[] = {
             &cu.getPosq().getDevicePointer(),
@@ -874,6 +1382,7 @@ double CudaCalcMeldForceKernel::execute(ContextImpl& context, bool includeForces
             &distanceRestGlobalIndices->getDevicePointer(),
             &distanceRestForces->getDevicePointer(),
             &restraintEnergies->getDevicePointer(),
+            &nonECOrestraintEnergies->getDevicePointer(),
             &restraintActive->getDevicePointer(),
             &numDistRestraints};
         cu.executeKernel(applyDistRestKernel, applyDistRestArgs, numDistRestraints);
@@ -933,7 +1442,7 @@ double CudaCalcMeldForceKernel::execute(ContextImpl& context, bool includeForces
         };
         cu.executeKernel(applyTorsProfileRestKernel, applyTorsProfileRestArgs, numTorsProfileRestraints);
     }
-
+    on_step++;
     return 0.0;
 }
 

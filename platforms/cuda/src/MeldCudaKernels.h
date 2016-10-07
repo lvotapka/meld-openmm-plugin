@@ -9,6 +9,8 @@
 #include "meldKernels.h"
 #include "openmm/kernels.h"
 #include "openmm/System.h"
+#include <iostream>
+#include <fstream>
 #include "openmm/cuda/CudaContext.h"
 #include "openmm/cuda/CudaArray.h"
 #include "openmm/cuda/CudaSort.h"
@@ -40,6 +42,11 @@ public:
      * @param includeEnergy  true if the energy should be calculated
      * @return the potential energy due to the force
      */
+
+    void calcEcoValues();
+    
+    void testEverythingEco();
+
     double execute(OpenMM::ContextImpl& context, bool includeForces, bool includeEnergy);
 
     void copyParametersToContext(OpenMM::ContextImpl& context, const MeldForce& force);
@@ -56,6 +63,23 @@ private:
     int numRestraints;
     int numGroups;
     int numCollections;
+    float ecoCutoff;
+    int numResidues;
+    int INF;
+    int MAX_THREADS;
+    int MAX_ECO_DEPTH;
+    int eco_output_freq; // the frequency at which to output
+    int eco_value_all_dist_rests; // the total eco value of all steps so far
+    int on_step; // how many steps have elapsed so far when we've updated the eco totals
+    bool print_avg_eco;
+    bool print_eco_value_array;
+    int current_replica_index;
+    int starting_replica_index;   
+    std::ofstream fout; 
+
+    
+    long int timevar; // a convenient variable to keep track of time
+    long int timecount; 
     int largestGroup;
     int largestCollection;
     int groupsPerBlock;
@@ -74,6 +98,14 @@ private:
     CUfunction applyTorsionRestKernel;
     CUfunction applyDistProfileRestKernel;
     CUfunction applyTorsProfileRestKernel;
+    CUfunction computeContactsKernel;
+    CUfunction computeEdgeListKernel;
+    CUfunction dijkstra_initializeKernel;
+    CUfunction dijkstra_save_old_vectorsKernel;
+    CUfunction dijkstra_settle_and_updateKernel;
+    CUfunction dijkstra_log_reduceKernel;
+    CUfunction assignRestEcoKernel;
+    CUfunction test_get_alpha_carbon_posqKernel;
 
     /**
      * Arrays for distance restraints
@@ -85,15 +117,71 @@ private:
 
     OpenMM::CudaArray* distanceRestKParams;       // float to hold k
     std::vector<float> h_distanceRestKParams;
+    
+    OpenMM::CudaArray* distanceRestDoingEco;      // bool to hold doing_eco
+    std::vector<int> h_distanceRestDoingEco;
+    
+    OpenMM::CudaArray* distanceRestEcoFactors;      // bool to hold eco factors
+    std::vector<float> h_distanceRestEcoFactors;
+    
+    OpenMM::CudaArray* distanceRestEcoConstants;      // bool to hold eco factors
+    std::vector<float> h_distanceRestEcoConstants;
+    
+    OpenMM::CudaArray* distanceRestEcoLinears;      // bool to hold eco factors
+    std::vector<float> h_distanceRestEcoLinears;
+    
+    OpenMM::CudaArray* distanceRestEcoValues;      // float to hold eco values
+    std::vector<float> h_distanceRestEcoValues;
+    
+    //OpenMM::CudaArray* distanceRestCOValues;      // float to hold CO (contact order) values PROBLEM: debug later
+    //std::vector<float> h_distanceRestCOValues;
 
     OpenMM::CudaArray* distanceRestAtomIndices;   // int2 to hold i,j
     std::vector<int2> h_distanceRestAtomIndices;
+    
+    OpenMM::CudaArray* distanceRestResidueIndices;   // int2 to hold i,j
+    std::vector<int2> h_distanceRestResidueIndices;
 
     OpenMM::CudaArray* distanceRestGlobalIndices; // int to hold the global index for this restraint
     std::vector<int> h_distanceRestGlobalIndices;
 
     OpenMM::CudaArray* distanceRestForces; // cache to hold force computations until the final application step
+    std::vector<float3> h_distanceRestForces; // by filling this with NaN's, we can catch overflow problems
 
+    OpenMM::CudaArray* distanceRestContacts; // Integer array of contacts, of size numRestraints**2
+
+    OpenMM::CudaArray* distanceRestEdgeCounts; // Integer array of edge counts, of size numRestraints
+
+    OpenMM::CudaArray* alphaCarbons; // Indices of alpha carbons
+    std::vector<int> h_alphaCarbons;
+    
+    //std::vector<int> eco_output_freq; // the frequency at which to output ECO info
+    
+    OpenMM::CudaArray* alphaCarbonPosq;
+    std::vector<float> h_alphaCarbonPosq; // atomic positions of alpha carbons
+    
+    std::vector<int> h_dijkstra_unexplored;
+    std::vector<int> h_dijkstra_unexplored_old;
+    std::vector<int> h_dijkstra_frontier;
+    std::vector<int> h_dijkstra_frontier_old;
+    std::vector<int> h_dijkstra_n_explored;
+    std::vector<int> h_dijkstra_n_explored_old;
+    
+    std::vector<int> h_distRestSorted;
+    
+    std::vector<int> h_distanceRestContacts;
+    std::vector<int> h_distanceRestEdgeCounts;
+    std::vector<int> h_dijkstra_total;
+    std::vector<int> h_dijkstra_distance;
+    std::vector<int> h_dijkstra_distance2;
+    
+    OpenMM::CudaArray* dijkstra_unexplored;
+    OpenMM::CudaArray* dijkstra_unexplored_old;
+    OpenMM::CudaArray* dijkstra_frontier;
+    OpenMM::CudaArray* dijkstra_frontier_old;
+    OpenMM::CudaArray* dijkstra_distance;
+    OpenMM::CudaArray* dijkstra_n_explored;
+    OpenMM::CudaArray* dijkstra_total;
     /**
      * Arrays for hyperbolic distance restraints
      *
@@ -193,6 +281,9 @@ private:
      * Each array has size numRestraints
      */
     OpenMM::CudaArray* restraintEnergies;           // energy for each restraint
+    OpenMM::CudaArray* nonECOrestraintEnergies;     // energy for each restraint NOT scaled by ECO
+    std::vector<float> h_restraintEnergies;
+    std::vector<float> h_restraintNonEcoEnergies;
 
     OpenMM::CudaArray* restraintActive;             // is this restraint active?
 
