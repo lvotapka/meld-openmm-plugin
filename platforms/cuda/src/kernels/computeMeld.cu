@@ -385,6 +385,7 @@ extern "C" __global__ void computeDistRest(
         }
         
         nonECOenergy = energy;
+        energy = 0.0; // reset the energy, so it only depends on ECO
         
         if ((doing_eco == true) && (eco_value > 0.0)) { // make sure we want to do eco and that the eco value is positive
           assert(eco_value >= 1.0); // This should catch any weird floating point problems
@@ -396,9 +397,9 @@ extern "C" __global__ void computeDistRest(
           if (energy_eco_multiple < 0.0) {
             energy_eco_multiple = 0.0; // we don't want a force driving things apart
           }
-          energy *= energy_eco_multiple; // ECO adjustments here
+          //energy *= energy_eco_multiple; // ECO adjustments here
           energy += eco_linear*eco_value; // adds eco to the energy instead of multiplying
-          dEdR   *= force_eco_multiple;
+          //dEdR   *= force_eco_multiple;
         }
 
         // store force into local buffer
