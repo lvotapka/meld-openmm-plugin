@@ -768,7 +768,7 @@ void CudaCalcMeldForceKernel::setupCartProfileRestraints(const MeldForce& force)
     int numAtoms = system.getNumParticles();
     std::string restType = "Cartesian profile restraint";
     int currentParamIndex = 0;
-    
+        
     for (int i=0; i < numCartProfileRestCoeffs; ++i) { // ALERT!!! DON'T COMMENT OUT THIS LOOP
         h_cartProfileRestCoeffs[i] = force.getCartProfileRestCoeffs()[i];
     }
@@ -794,11 +794,12 @@ void CudaCalcMeldForceKernel::setupCartProfileRestraints(const MeldForce& force)
         h_cartProfileRestOrigin[i] = make_float3(origx, origy, origz);
         h_cartProfileRestGlobalIndices[i] = globalIndex;
         h_cartProfileRestScaleFactor[i] = scaleFactor;
+        //cout << "scale factor " << i << ": " << scaleFactor << "\n";
         
         
         /*
         cout << "MeldCudaKernels Adding Cartesian Profile Restraint. atom " << atom << " startingCoeff:" << startingCoeff << " dim:" << dimx << ", "<< dimy << ", "<< dimz << "\n";
-        //cout << " res:" << resx << ", "<< resy << ", "<< resz << " orig:" << origx << ", " << origy << ", " << origz << "\n";
+        cout << " res:" << resx << ", "<< resy << ", "<< resz << " orig:" << origx << ", " << origy << ", " << origz << " globalIndex:" << globalIndex << "\n";
         int j;
         float z=-10.0;
         float energy;
@@ -811,18 +812,18 @@ void CudaCalcMeldForceKernel::setupCartProfileRestraints(const MeldForce& force)
           energy = eval_cart_profile(i);
           cout << energy << ", ";
         }
-        cout << "\n";*/
+        cout << "\n"; */
         //int thisEnd = currentParamIndex;
         //h_torsProileRestParamBounds[i] = make_int2(thisStart, thisEnd);
     }
     
     /*
-    //cout << "MeldCudaKernels cartProfileRestCoeffs: ";
-    for (int i=0; i < numCartProfileRestCoeffs; ++i) {
-        cout << h_cartProfileRestCoeffs[i] << " ";
-        assert(isfinite(h_cartProfileRestCoeffs[i]));
+    cout << "MeldCudaKernels h_cartProfileRestAtomIndices: ";
+    for (int i=0; i < numCartProfileRestraints; ++i) {
+        cout << h_cartProfileRestAtomIndices[i] << " ";
+        //assert(isfinite(h_cartProfileRestCoeffs[i]));
     }
-    //cout << "\n";*/
+    cout << "\n";*/
     
 }
 
@@ -966,9 +967,6 @@ void CudaCalcMeldForceKernel::validateAndUpload() {
     groupRestraintIndices->upload(h_groupRestraintIndices);
     groupBounds->upload(h_groupBounds);
     groupNumActive->upload(h_groupNumActive);
-    /*for (counter = 0; counter < numGroups; counter++) {
-      cout << "h_groupNumActive[" << counter << "]: " << h_groupNumActive[counter] << "\n";
-    }*/
     
     collectionGroupIndices->upload(h_collectionGroupIndices);
     collectionBounds->upload(h_collectionBounds);
@@ -1236,6 +1234,7 @@ float CudaCalcMeldForceKernel::eval_cart_profile(int counter) { //, float* energ
     dz = resolution.z;
     out_of_bounds = true;
   } 
+    
   int bin = (int) (x*dims.y*dims.z + y*dims.z + z);
   float energy = 0.;
   float3 force;
@@ -1249,7 +1248,11 @@ float CudaCalcMeldForceKernel::eval_cart_profile(int counter) { //, float* energ
   float pow_x = 0.;
   float pow_y = 0.;
   float pow_z = 0.;
+  
+  //cout << "h_cartProfileRestStartingCoeff[counter]:" << h_cartProfileRestStartingCoeff[counter] << "\n";
+  
   for (i = 0; i < 4; i++) {
+      //cout << "pow(" << norm_dx << ", " << i << "): " << pow(norm_dx, i) << "\n";
       pow_y = 0.;
       for (j = 0; j < 4; j++) {
           pow_z = 0.;
@@ -1436,19 +1439,21 @@ double CudaCalcMeldForceKernel::execute(ContextImpl& context, bool includeForces
             &cartProfilePosBuffer->getDevicePointer(),
             &numCartProfileRestraints };
         cu.executeKernel(computeCartProfileRestKernel, cartProfileArgs, numCartProfileRestraints);
-        
-        //cout << "numCartProfileRestraints: " << numCartProfileRestraints << "\n";
         /*
+        //cout << "numCartProfileRestraints: " << numCartProfileRestraints << "\n";
+        
         cartProfileRestForces->download(h_cartProfileRestForces);
         restraintEnergies->download(h_restraintEnergies);
         cartProfilePosBuffer->download(h_cartProfilePosBuffer);  
         
         float energy;
         for (counter=0; counter < numCartProfileRestraints; counter++) {
-            cout << "Atom x,y,z: " << h_cartProfilePosBuffer[counter].x << "," << h_cartProfilePosBuffer[counter].y << "," << h_cartProfilePosBuffer[counter].z << " energy: " << h_restraintEnergies[h_cartProfileRestGlobalIndices[counter]] << " force z:" << h_cartProfileRestForces[counter].z << "\n"; //
-            //energy = eval_cart_profile(h_cartProfilePosBuffer[counter], h_cartProfileRestDims[counter], h_cartProfileRestOrigin[counter], h_cartProfileRestRes[counter], h_cartProfileRestStartingCoeff[counter], h_cartProfileRestCoeffs);
+          if (-2.0 < -1.5) {
+            cout << "Atom i:" << h_cartProfileRestAtomIndices[counter] << " x,y,z: " << h_cartProfilePosBuffer[counter].x << "," << h_cartProfilePosBuffer[counter].y << "," << h_cartProfilePosBuffer[counter].z << " energy: " << h_restraintEnergies[h_cartProfileRestGlobalIndices[counter]] << " force z:" << h_cartProfileRestForces[counter].z << "\n"; //
             energy = eval_cart_profile(counter);
+            cout << "h_cartProfileRestStartingCoeff: " << h_cartProfileRestStartingCoeff[counter] << "\n";
             cout << "test force z: " << energy << "\n"; // << " test_force.x,y,z: " << h_cartProfileRestForces[0].x << "," << h_cartProfileRestForces[0].y << "," << h_cartProfileRestForces[0].z << "\n";
+          }
         }
         */
         
