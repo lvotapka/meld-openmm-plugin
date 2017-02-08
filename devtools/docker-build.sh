@@ -29,22 +29,18 @@ POST=`echo $GIT_DESCRIBE | cut -f4 -d.`
 export VERSTRING=${MAJOR}.${MINOR}.${PATCH}.post${POST}
 cd /
 
-# build the meld conda package
+# decide if we should upload to anaconda cloud
 if [[ "${TRAVIS_PULL_REQUEST}" == "false" && "${TRAVIS_BRANCH}" == "dev" ]]; then
-    conda-build --no-binstar-upload --python 2.7 --python 3.4 --python 3.5 /io/devtools/conda/dev
+    UPLOAD="--upload maccallum_lab"
+elif [[ "${TRAVIS_PULL_REQUEST}" == "false" && "${TRAVIS_BRANCH}" == "master" ]]; then
+    UPLOAD="--upload maccallum_lab"
 else
-    conda-build --no-binstar-upload --python 2.7 --python 3.4 --python 3.5 /io/devtools/conda/master
+    UPLOAD=""
 fi
 
-# upload to anaconda.org
-if [[ "${TRAVIS_PULL_REQUEST}" == "false" && "${TRAVIS_BRANCH}" == "master" ]]; then
-    anaconda --token "$ANACONDA_TOKEN" upload --user maccallum_lab /anaconda/conda-bld/linux-64/meld*.bz2
-elif [[ "${TRAVIS_PULL_REQUEST}" == "false" && "${TRAVIS_BRANCH}" == "dev" ]]; then
-    anaconda --token "$ANACONDA_TOKEN" upload --user maccallum_lab /anaconda/conda-bld/linux-64/meld*.bz2
-fi
-
-# upload docs to S3
-
-if [[ "${TRAVIS_PULL_REQUEST}" == "false" && "${TRAVIS_BRANCH}" == "master" ]]; then
-    aws s3 sync --region us-west-2 --delete /anaconda/conda-bld/work/build/meld-api-c++/ s3://plugin-api.meldmd.org/
+# build the meld conda package
+if [[ "${TRAVIS_BRANCH}" == "master" ]]; then
+    /io/devtools/conda-build-all $UPLOAD -- /io/devtools/conda/master
+else
+    /io/devtools/conda-build-all $UPLOAD -- /io/devtools/conda/dev
 fi

@@ -11,13 +11,13 @@ requirements:
     - cmake
     - doxygen #[not osx]
     - python
-    - swig ==3.0.7
-    - openmm-dev
+    - swig
+    - openmm
     - eigen3
 
   run:
     - python
-    - openmm-dev
+    - openmm
 
 test:
   imports:
